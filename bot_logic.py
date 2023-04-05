@@ -8,11 +8,9 @@ from decimal import Decimal, ROUND_HALF_UP
 from binance_API.spot_client.spot_client_handler import SpotClient
 from binance_API.websocket.websocket_handler import WebsocketClient
 from sqlite3_handler.db_handler import SQLiteHandler
-from log_handler.log_handler import LogHandler
 from sqlite3_handler import tables
 from print_tags import Tags
 
-lh: LogHandler
 spot_client: SpotClient
 sqlh: SQLiteHandler
 
@@ -265,10 +263,6 @@ def start_bot_logic():
         '\nforce_url:', force_url,
     )
 
-    global lh
-    lh = LogHandler(name=f'{first_symbol}{second_symbol}')
-    lh.logger.info('logger created')
-
     global spot_client
     spot_client = SpotClient(
         test_key=test_key,
@@ -276,7 +270,6 @@ def start_bot_logic():
         first_symbol=first_symbol,
         second_symbol=second_symbol
     )
-    lh.logger.info('spot_client created')
 
     web_socket = WebsocketClient(
         test_key=test_key,
@@ -285,7 +278,6 @@ def start_bot_logic():
         second_symbol=second_symbol,
         listen_key=spot_client.listen_key
     )
-    lh.logger.info('web_socket created')
 
     base_path = str(__file__)[:len(__file__) - len(os.path.basename(str(__file__))) - 1]
     if test_key:
@@ -296,7 +288,6 @@ def start_bot_logic():
     global sqlh
     sqlh = SQLiteHandler(db_name=db_name, db_dir=base_path)
     sqlh.create_all_tables(tables.create_all_tables)
-    lh.logger.info(f'sql_handler created, db_name: {db_name}')
 
     try:
         spot_client.get_current_state()
