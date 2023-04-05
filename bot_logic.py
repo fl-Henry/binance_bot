@@ -19,6 +19,11 @@ def if_buy(symbol):
     """
     :param symbol: str      | 'BTCUSTD'
     """
+    # TODO: table "pending orders" > order pairs > when callback with execution report - check table "pending orders"
+    # if pending match orders quantity and price then append orderId and update status
+    # when both of orders are filled > OK
+
+    # TODO: when the balance is not enough to sell then create only buy order and make sell order still pending
     orders = spot_requests.get_orders(
         client=spot_client,
         symbol=symbol,
@@ -132,7 +137,29 @@ def start_bot_logic():
         if len(spot_client.filters) > 0:
             sqlh.insert_from_dict('filters', spot_client.filters)
 
-        # spot_client.update_orders_to_db()
+        orders_columns = [
+            'symbol',
+            'orderId',
+            'price',
+            'origQty',
+            'cost',
+            'side',
+            'status',
+            'type',
+            'timeInForce',
+            'workingTime'
+        ]
+
+        sqlh.select_from_table('orders', orders_columns)
+
+        orders_from_db = sqlh.select_from_table('orders', orders_columns)
+        orders_fetchall = orders_from_db.fetchall()
+        orders_from_db = sqlh.parse_db_data_to_dict(orders_columns, orders_fetchall)
+
+        orders_to_save = spot_client.update_orders_to_db(get_limit=210, orders_to_sort=orders_from_db)
+        if len(orders_to_save) > 0:
+            for order in orders_to_save:
+                sqlh.insert_from_dict('orders', order)
 
         renew_listen_key_counter = 0
         while True:

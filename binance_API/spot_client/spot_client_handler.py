@@ -19,6 +19,13 @@ class SpotClient(Spot):
         :param second_symbol: str   | 'USDT'
         :return: Spot               | client
         """
+        self.minNotional = None
+        self.minPrice = None
+        self.maxPrice = None
+        self.tickSize = None
+        self.minQty = None
+        self.maxQty = None
+        self.stepSize = None
         self.filters = None
         self.current_state_data = None
         self.first_symbol = first_symbol
@@ -54,37 +61,31 @@ class SpotClient(Spot):
         """
         symbol_exchange_info = self.exchange_info(symbol=self.symbol)
 
-        # filters_dict = {}
-        # for item in symbol_exchange_info['symbols'][0]['filters']:
-        #     filters_dict.update({
-        #         item['filterType']: {
-        #             key: item[key] for key in item.keys()
-        #         }
-        #     })
-
         self.filters = {
             "serverTime": symbol_exchange_info['serverTime'],
             "symbol": symbol_exchange_info['symbols'][0]['symbol'],
-            # "filters": filters_dict,
-            "PRICE_FILTER": {
-                "filterType": "PRICE_FILTER",
-                "minPrice": "0.01000000",
-                "maxPrice": "1000000.00000000",
-                "tickSize": "0.01000000"
-            },
-            "LOT_SIZE": {
-                "filterType": "LOT_SIZE",
-                "minQty": "0.00000100",
-                "maxQty": "900.00000000",
-                "stepSize": "0.00000100"
-            },
-            "MIN_NOTIONAL": {
-                "filterType": "MIN_NOTIONAL",
-                "minNotional": "10.00000000",
-                "applyToMarket": true,
-                "avgPriceMins": 1
-            },
+            'PRICE_FILTER_filterType': symbol_exchange_info['symbols'][0]['filters'][0]["filterType"],
+            'PRICE_FILTER_minPrice': symbol_exchange_info['symbols'][0]['filters'][0]["minPrice"],
+            'PRICE_FILTER_maxPrice': symbol_exchange_info['symbols'][0]['filters'][0]["maxPrice"],
+            'PRICE_FILTER_tickSize': symbol_exchange_info['symbols'][0]['filters'][0]["tickSize"],
+            'LOT_SIZE_filterType': symbol_exchange_info['symbols'][0]['filters'][1]["filterType"],
+            'LOT_SIZE_minQty': symbol_exchange_info['symbols'][0]['filters'][1]["minQty"],
+            'LOT_SIZE_maxQty': symbol_exchange_info['symbols'][0]['filters'][1]["maxQty"],
+            'LOT_SIZE_stepSize': symbol_exchange_info['symbols'][0]['filters'][1]["stepSize"],
+            'MIN_NOTIONAL_filterType': symbol_exchange_info['symbols'][0]['filters'][2]["filterType"],
+            'MIN_NOTIONAL_minNotional': symbol_exchange_info['symbols'][0]['filters'][2]["minNotional"],
+            'MIN_NOTIONAL_applyToMarket': symbol_exchange_info['symbols'][0]['filters'][2]["applyToMarket"],
+            'MIN_NOTIONAL_avgPriceMins': symbol_exchange_info['symbols'][0]['filters'][2]["avgPriceMins"],
         }
+
+        self.minNotional = Decimal(str(float(self.filters['MIN_NOTIONAL_minNotional'])))
+        self.minPrice = Decimal(str(float(self.filters['PRICE_FILTER_minPrice'])))
+        self.maxPrice = Decimal(str(float(self.filters['PRICE_FILTER_maxPrice'])))
+        self.tickSize = Decimal(str(float(self.filters['PRICE_FILTER_tickSize'])))
+        self.minQty = Decimal(str(float(self.filters['LOT_SIZE_minQty'])))
+        self.maxQty = Decimal(str(float(self.filters['LOT_SIZE_maxQty'])))
+        self.stepSize = Decimal(str(float(self.filters['LOT_SIZE_stepSize'])))
+
         return self.filters
 
     def depth_limit(self, limit, side='bids'):
@@ -152,10 +153,11 @@ class SpotClient(Spot):
 
         return self.current_state_data
 
-    def update_orders_to_db(self, get_limit=200):
+    def update_orders_to_db(self, get_limit=200, orders_to_sort=None):
         """
         :param self: Spot
-        :param get_limit: int
+        :param get_limit: int           | 200
+        :param orders_to_sort: dict     | None
         """
         orders = self.get_orders(symbol=self.symbol, limit=get_limit)
 
@@ -166,16 +168,31 @@ class SpotClient(Spot):
                 "orderId": int(order['orderId']),
                 "price": str(order['price']),
                 "origQty": str(order['origQty']),
-                "cost": str(order['cost']),
+                "cost": str((Decimal(order['price']) * Decimal(order['origQty'])).quantize(
+                    Decimal('0.00000000'),
+                    rounding=ROUND_HALF_UP
+                )),
                 "side": str(order['side']),
                 "status": str(order['status']),
                 "type": str(order['type']),
-                "timeInForce": int(order['timeInForce']),
-                "transactTime": int(order['transactTime']),
+                "timeInForce": str(order['timeInForce']),
                 "workingTime": int(order['workingTime']),
             }
             orders_list.append(order_to_append)
-        return orders_list
+
+        if orders_to_sort is None:
+            return orders_list
+        else:
+            id_list = []
+            for order in orders_to_sort:
+                id_list.append(int(order['orderId']))
+
+            sorted_orders_list = []
+            for order in orders_list:
+                if int(order['orderId']) not in id_list:
+                    sorted_orders_list.append(order)
+
+            return sorted_orders_list
 
     def cancel_all_new_orders(self):
         try:
@@ -187,3 +204,4 @@ class SpotClient(Spot):
                         self.cancel_order(symbol=self.symbol, orderId=order['orderId'])
         except Exception as _ex:
             print(_ex)
+

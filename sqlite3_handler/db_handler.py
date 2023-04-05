@@ -49,7 +49,9 @@ class SQLiteHandler:
             if (where_col is not None) and (where_col_val is not None) and (where_condition is not None):
                 print('[ERROR] select_from_table > too many args')
             else:
-                if where_col is not None and where_col_val is not None:
+                if (where_col is None) and (where_col_val is None) and (where_condition is None):
+                    sql_command = f"SELECT {', '.join([str(x) for x in column_names])} FROM {table};"
+                elif where_col is not None and where_col_val is not None:
                     sql_command = f"SELECT {', '.join([str(x) for x in column_names])} FROM {table} " \
                                   f"WHERE {where_col} = {where_col_val};"
                 elif where_condition is not None:
@@ -57,6 +59,17 @@ class SQLiteHandler:
                                   f"WHERE {where_condition};"
                 if sql_command != '':
                     return self.cursor.execute(sql_command)
+
+    @staticmethod
+    def parse_db_data_to_dict(column_names: list, db_data):
+        result_list = []
+        for row_values in db_data:
+            data_dict = {}
+            for col, value in zip(column_names, row_values):
+                data_dict.update({str(col): value})
+            result_list.append(data_dict)
+
+        return result_list
 
     def update(self, table, set_data_dict, where_condition: str = None):
 
@@ -95,9 +108,12 @@ class SQLiteHandler:
         else:
             sql_command = f"INSERT INTO {table} ({', '.join([str(x) for x in column_names])}) " \
                           f"VALUES ({', '.join([repr(x) for x in values])})"
-            print(sql_command)
-            self.cursor.execute(sql_command)
-            self.connected_db.commit()
+            try:
+                self.cursor.execute(sql_command)
+                self.connected_db.commit()
+            except sqlite3.OperationalError as _ex:
+                print('[ERROR] insert >', _ex)
+                print(sql_command)
 
     def insert_from_dict(self, table, data_dict):
         column_names = [key for key in data_dict.keys()]

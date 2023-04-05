@@ -8,18 +8,18 @@ import time
 # print('1564034571105')
 # print('1680625921677')
 
-set_data_dict = {
-        'balance_first_symbol': 'BTC',
-        'balance_first_symbol_free_value': '1234.5678',
-        'balance_first_symbol_locked_value': '321.654',
-        'balance_second_symbol': 'USDT',
-        'balance_second_symbol_free_value': '5678.1234',
-        'balance_second_symbol_locked_value': '789.654',
-
-        'time': int(time.time()*1000 // 1)
-    }
-
-print(repr(str(set_data_dict)))
+# set_data_dict = {
+#         'balance_first_symbol': 'BTC',
+#         'balance_first_symbol_free_value': '1234.5678',
+#         'balance_first_symbol_locked_value': '321.654',
+#         'balance_second_symbol': 'USDT',
+#         'balance_second_symbol_free_value': '5678.1234',
+#         'balance_second_symbol_locked_value': '789.654',
+#
+#         'time': int(time.time()*1000 // 1)
+#     }
+#
+# print(repr(str(set_data_dict)))
 
 
 # set_data_str = [f"{col} = {repr(set_data_dict[col])}, " for col in set_data_dict.keys()]
@@ -74,7 +74,7 @@ print(repr(str(set_data_dict)))
 # print(Decimal('123.123456789012345678901234567890').quantize(Decimal(precis), rounding=ROUND_HALF_EVEN))
 # print(Decimal('123.123456789012345678901234567890').quantize(Decimal(precis), rounding=ROUND_HALF_UP))
 # print()
-# print(Decimal(str(float('0.01000'))))
+print(Decimal(str(float('0.01000'))))
 # print(Decimal('123.1255'))
 # print(Decimal('123.1255').quantize(Decimal(precis), rounding=ROUND_HALF_DOWN))
 # print(Decimal('123.1255').quantize(Decimal(precis), rounding=ROUND_HALF_EVEN))

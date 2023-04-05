@@ -29,6 +29,15 @@ class TestSum(unittest.TestCase):
     ]
 
     columns = ['symbol', 'orderId', 'price', 'origQty', 'cost', 'side', 'status']
+    current_state_columns = [
+        "balance_first_symbol",
+        "balance_first_symbol_free_value",
+        "balance_first_symbol_locked_value",
+        "balance_second_symbol",
+        "balance_second_symbol_free_value",
+        "balance_second_symbol_locked_value",
+        "time"
+    ]
 
     current_state = {
         'balance_first_symbol': 'BTC',
@@ -176,7 +185,7 @@ class TestSum(unittest.TestCase):
             sqlh.insert_from_dict(table, data_dict)
 
             # res = sqlh.cursor.execute(f"SELECT {list(data_dict.keys())[5]} FROM {table} WHERE pk = 1")
-            print("select_from_table(table, columns, 'pk', 1)")
+            # print("select_from_table(table, columns, 'pk', 1)")
             res = sqlh.select_from_table(table, list(data_dict.keys()), 'pk', 1)
 
             param_db = str(res.fetchone()[5])
@@ -185,7 +194,7 @@ class TestSum(unittest.TestCase):
             # print('param_const: ', param_const)
             self.assertEqual(param_db, param_const)
 
-            print("select_from_table(table, columns, where_condition='pk = 1')")
+            # print("select_from_table(table, columns, where_condition='pk = 1')")
             res = sqlh.select_from_table(table, list(data_dict.keys()), where_condition='pk = 1')
             param_db = str(res.fetchone()[5])
             param_const = str(data_dict['balance_second_symbol_locked_value'])
@@ -219,6 +228,34 @@ class TestSum(unittest.TestCase):
             param_db = str(res.fetchone()[5])
             param_const = str(data_dict_to_update['balance_second_symbol_locked_value'])
             self.assertEqual(param_db, param_const)
+
+        finally:
+            sqlh.close()
+            os.remove(f"{db_dir}/{current_db_name}.db")
+
+    def test_parse_db_data_to_dict(self):
+        print('\ntest_parse_db_data_to_dict')
+        current_db_name = 'test_parse_db_data_to_dict'
+        sqlh = SQLiteHandler(db_name=current_db_name, db_dir=db_dir)
+        try:
+            sqlh.create_all_tables(create_all_tables)
+
+            table = 'current_state'
+            data_dict = self.current_state
+
+            data_to_save = [self.current_state, self.current_state_01]
+            if len(data_to_save) > 0:
+                for row in data_to_save:
+                    sqlh.insert_from_dict(table, row)
+
+            res = sqlh.select_from_table(table, list(data_dict.keys()))
+            param_db = res.fetchall()
+            parsed_data = sqlh.parse_db_data_to_dict(list(data_dict.keys()), param_db)
+
+            self.assertEqual(
+                data_to_save[0]['balance_first_symbol_locked_value'],
+                parsed_data[0]['balance_first_symbol_locked_value']
+            )
 
         finally:
             sqlh.close()

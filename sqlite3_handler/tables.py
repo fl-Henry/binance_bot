@@ -12,8 +12,7 @@ create_table_orders = """
         side TEXT NOT NULL DEFAULT NULL,
         status TEXT NOT NULL DEFAULT 'PENDING',
         type TEXT ,
-        timeInForce INTEGER ,
-        transactTime INTEGER ,
+        timeInForce TEXT ,
         workingTime INTEGER
     );
 """
@@ -77,7 +76,18 @@ create_table_filters = """
         pk INTEGER PRIMARY KEY,
         serverTime INTEGER NOT NULL DEFAULT NULL,
         symbol TEXT DEFAULT NULL,
-        filters TEXT NOT NULL DEFAULT NULL
+        PRICE_FILTER_filterType TEXT NOT NULL DEFAULT NULL,
+        PRICE_FILTER_minPrice TEXT NOT NULL DEFAULT NULL,
+        PRICE_FILTER_maxPrice TEXT NOT NULL DEFAULT NULL,
+        PRICE_FILTER_tickSize TEXT NOT NULL DEFAULT NULL,
+        LOT_SIZE_filterType TEXT NOT NULL DEFAULT NULL,
+        LOT_SIZE_minQty TEXT NOT NULL DEFAULT NULL,
+        LOT_SIZE_maxQty TEXT NOT NULL DEFAULT NULL,
+        LOT_SIZE_stepSize TEXT NOT NULL DEFAULT NULL,
+        MIN_NOTIONAL_filterType TEXT NOT NULL DEFAULT NULL,
+        MIN_NOTIONAL_minNotional TEXT NOT NULL DEFAULT NULL,
+        MIN_NOTIONAL_applyToMarket TEXT NOT NULL DEFAULT NULL,
+        MIN_NOTIONAL_avgPriceMins TEXT NOT NULL DEFAULT NULL
     );
 """
 
