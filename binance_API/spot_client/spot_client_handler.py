@@ -1,4 +1,4 @@
-# import pandas as pd
+import pandas as pd
 import time
 
 from binance.spot import Spot
@@ -147,13 +147,41 @@ class SpotClient(Spot):
             'balance_second_symbol': self.second_symbol,
             'balance_second_symbol_free_value': second_symbol_free_value,
             'balance_second_symbol_locked_value': second_symbol_locked_value,
-
             'time': int(time.time()*1000 // 1)
         }
 
         return self.current_state_data
 
-    def update_orders_to_db(self, get_limit=200, orders_to_sort=None):
+    def str_current_state(self):
+        wallet = pd.DataFrame(
+            [
+                [
+                    self.current_state_data['balance_first_symbol'],
+                    self.current_state_data['balance_first_symbol_free_value'],
+                    self.current_state_data['balance_first_symbol_locked_value']
+                ],
+                [
+                    self.current_state_data['balance_second_symbol'],
+                    self.current_state_data['balance_second_symbol_free_value'],
+                    self.current_state_data['balance_second_symbol_locked_value']
+                ]
+            ],
+            columns=['symbol', 'free', 'locked']
+        )
+        output = f"" \
+                 f"\nCurrent 1st bid:   {self.current_state_data['order_book_bid_current_price']} " \
+                 f"USDT/{self.first_symbol} | Quantity: {self.current_state_data['order_book_bid_current_quantity']}" \
+                 f"\nCurrent 1st ask:   {self.current_state_data['order_book_ask_current_price']} " \
+                 f"USDT/{self.first_symbol} | Quantity: {self.current_state_data['order_book_ask_current_quantity']}" \
+                 f"\nLocked:            {self.current_state_data['balance_locked']} USDT" \
+                 f"\nFree:              {self.current_state_data['balance_free']} USDT" \
+                 f"\nSum:               {self.current_state_data['balance_sum']} USDT" \
+                 f"\n" \
+                 f"\nWallet:" \
+                 f"\n{wallet}"
+        print(output)
+
+    def get_orders_to_db(self, get_limit=100, orders_to_sort=None):
         """
         :param self: Spot
         :param get_limit: int           | 200
@@ -195,13 +223,12 @@ class SpotClient(Spot):
             return sorted_orders_list
 
     def cancel_all_new_orders(self):
-        try:
-            orders = self.get_orders(symbol=self.symbol, get_limit=200)
-
-            if len(orders) > 0:
-                for order in orders:
+        orders = self.get_orders(symbol=self.symbol, limit=100)
+        if len(orders) > 0:
+            for order in orders:
+                try:
                     if order['status'] == 'NEW':
                         self.cancel_order(symbol=self.symbol, orderId=order['orderId'])
-        except Exception as _ex:
-            print(_ex)
+                except Exception as _ex:
+                    print(_ex)
 

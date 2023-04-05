@@ -1,57 +1,227 @@
 import os
 import argparse
+import time
 from time import sleep
 import pandas as pd
 
+from decimal import Decimal, ROUND_HALF_UP
 from binance_API.spot_client.spot_client_handler import SpotClient
 from binance_API.websocket.websocket_handler import WebsocketClient
 from sqlite3_handler.db_handler import SQLiteHandler
 from log_handler.log_handler import LogHandler
-from sqlite3_handler.tables import create_all_tables
+from sqlite3_handler import tables
 from print_tags import Tags
 
 lh: LogHandler
 spot_client: SpotClient
 sqlh: SQLiteHandler
 
+cost_limit = 500
+profit_percent = 0.3
 
-def if_buy(symbol):
+
+def create_buy_order():
+    spot_client.new_order(
+        symbol=spot_client.symbol,
+        quantity=0.001,
+        side='BUY',
+        type="LIMIT",
+        price=spot_client.depth_limit(20),
+        timeInForce="GTC"
+    )
+
+
+def create_sell_order():
+    spot_client.new_order(
+        symbol=spot_client.symbol,
+        quantity=0.001,
+        side='SELL',
+        type="LIMIT",
+        price=spot_client.depth_limit(20, side='asks'),
+        timeInForce="GTC"
+    )
+
+
+def update_orders_db():
+    sqlh.cursor.execute(tables.drop_table__orders)
+    sqlh.cursor.execute(tables.create_table__orders)
+
+    orders_to_save = spot_client.get_orders_to_db()
+    if len(orders_to_save) > 0:
+        for order in orders_to_save:
+            sqlh.insert_from_dict('orders', order)
+
+
+def sort_orders_by_status(list_of_orders_dict, status_list=None):
+    if status_list is None:
+        status_list = ['NEW', 'PENDING']
+
+    sorted_orders_list = []
+    for order in list_of_orders_dict:
+        if str(order['status']) in status_list:
+            sorted_orders_list.append(order)
+    return sorted_orders_list
+
+
+def sort_orders_by_side(list_of_orders_dict, side_list=None):
+    if side_list is None:
+        side_list = ['SELL']
+
+    sorted_orders_list = []
+    for order in list_of_orders_dict:
+        if str(order['side']) in side_list:
+            sorted_orders_list.append(order)
+    return sorted_orders_list
+
+
+def get_orders_in_process_from_db():
+    pending_orders_from_db = sqlh.select_from_table('pending_orders', tables.columns__pending_orders)
+    pending_orders_fetchall = pending_orders_from_db.fetchall()
+    pending_orders_from_db = sqlh.parse_db_data_to_dict(tables.columns__pending_orders, pending_orders_fetchall)
+
+    orders_from_db = sqlh.select_from_table('orders', tables.columns__orders)
+    orders_fetchall = orders_from_db.fetchall()
+    orders_from_db = sqlh.parse_db_data_to_dict(tables.columns__orders, orders_fetchall)
+
+    orders_in_process = sort_orders_by_status([*pending_orders_from_db, *orders_from_db])
+    orders_in_process_buy = sort_orders_by_side(orders_in_process, 'BUY')
+    orders_in_process_sell = sort_orders_by_side(orders_in_process, 'SELL')
+    orders_in_process_cost = 0
+    for order in orders_in_process:
+        orders_in_process_cost = orders_in_process_cost + float(order['cost'])
+
+    return {
+        'orders_in_process': orders_in_process,
+        'orders_in_process_cost': orders_in_process_cost,
+        'orders_in_process_buy': orders_in_process_buy,
+        'orders_in_process_sell': orders_in_process_sell,
+    }
+
+
+def trade_process():
     """
-    :param symbol: str      | 'BTCUSTD'
+    """
+    buy_profit_percent = 1 - (profit_percent * 2 / 3) / 100
+    sell_profit_percent = 1 + (profit_percent * 1 / 3) / 100
+
+    buy_price = Decimal(
+        Decimal(spot_client.current_state_data['order_book_bid_current_price']) *
+        Decimal(buy_profit_percent)
+    ) // Decimal(spot_client.filters['PRICE_FILTER_tickSize']) * Decimal(spot_client.filters['PRICE_FILTER_tickSize'])
+
+    if cost_limit * 0.1 < float(spot_client.filters['MIN_NOTIONAL_minNotional']):
+        purchase_cost = (Decimal(spot_client.filters['MIN_NOTIONAL_minNotional']) * Decimal('1.01')).quantize(
+            Decimal('0.00000000'), rounding=ROUND_HALF_UP
+        )
+    else:
+        purchase_cost = (Decimal(cost_limit) * Decimal('0.1')).quantize(
+            Decimal('0.00000000'), rounding=ROUND_HALF_UP
+        )
+
+    quantity = (
+            Decimal(purchase_cost) / Decimal(spot_client.current_state_data['order_book_bid_current_price'])
+    ) // Decimal(spot_client.filters['LOT_SIZE_stepSize']) * Decimal(spot_client.filters['LOT_SIZE_stepSize'])
+
+    buy_cost = (
+            Decimal(buy_price) * Decimal(quantity)
+    ) // Decimal(spot_client.filters['PRICE_FILTER_tickSize']) * Decimal(spot_client.filters['PRICE_FILTER_tickSize'])
+
+    sell_price = Decimal(
+        Decimal(spot_client.current_state_data['order_book_bid_current_price']) *
+        Decimal(sell_profit_percent)
+    ) // Decimal(spot_client.filters['PRICE_FILTER_tickSize']) * Decimal(spot_client.filters['PRICE_FILTER_tickSize'])
+
+    sell_cost = (
+            Decimal(sell_price) * Decimal(quantity)
+    ) // Decimal(spot_client.filters['PRICE_FILTER_tickSize']) * Decimal(spot_client.filters['PRICE_FILTER_tickSize'])
+
+    to_print_data = f"\n             Trade process completed (profit_percent: {profit_percent})" \
+                    f"\nBuy:      Price: {buy_price}  | Quantity: {quantity}    |    Cost: {buy_cost}" \
+                    f"\nSell:     Price: {sell_price}  | Quantity: {quantity}    |    Cost: {sell_cost}"
+
+    print(f'{Tags.BackgroundLightGreen}{Tags.Black}{to_print_data}{Tags.ResetAll}')
+
+    buy_order_to_db = {
+        "symbol": str(spot_client.symbol),
+        "price": str(buy_price),
+        "origQty": str(quantity),
+        "cost": str(buy_cost),
+        "side": str('BUY'),
+        "workingTime": int(time.time()*1000 // 1),
+    }
+    sell_order_to_db = {
+        "symbol": str(spot_client.symbol),
+        "price": str(sell_price),
+        "origQty": str(quantity),
+        "cost": str(sell_cost),
+        "side": str('SELL'),
+        "workingTime": int(time.time()*1000 // 1),
+    }
+
+    sqlh.insert_from_dict('pending_orders', buy_order_to_db)
+    sqlh.insert_from_dict('pending_orders', sell_order_to_db)
+    pair_pk = sqlh.select_from_table('pending_orders', ['pk'])
+    last_pair_pk = pair_pk.fetchall()[-2:]
+
+    pair_pk_to_db = {
+        'buy_order_pk': last_pair_pk[0][0],
+        'sell_order_pk': last_pair_pk[1][0],
+    }
+    sqlh.insert_from_dict('orders_pair', pair_pk_to_db)
+
+    # buy_key = False
+    # try:
+    #     buy_data = spot_requests.buy_order(
+    #         client=spot_client,
+    #         quantity=quantity,
+    #         symbol=symbol,
+    #         price=buy_price
+    #     )
+    #     buy_key = True
+    # except Exception as _ex:
+    #     print(_ex)
+    #
+    # sleep(1)
+    #
+    # if buy_key:
+    #
+    #
+    #
+    #     buy_data.update({'sum': (float(buy_data["price"]) * float(buy_data['quantity']))})
+    #     sell_data = buy_data
+    #     sell_data.update({'price': sell_price})
+    #     sell_data.update({'quantity': quantity})
+    #     sell_data.update({'sum': (float(sell_data["price"]) * float(sell_data['quantity']))})
+    #     state_history.add_orders_pair(pd.DataFrame([buy_data, sell_data]))
+    #
+    #     try:
+    #         spot_requests.sell_order(
+    #             client=spot_client,
+    #             quantity=quantity,
+    #             symbol=symbol,
+    #             price=sell_price
+    #         )
+    #
+    #     except Exception as _ex:
+    #         state_history.add_cannot_sell(sell_price, quantity, symbol)
+    #         print(_ex)
+
+
+def if_buy():
+    """
     """
     # TODO: table "pending orders" > order pairs > when callback with execution report - check table "pending orders"
     # if pending match orders quantity and price then append orderId and update status
     # when both of orders are filled > OK
 
     # TODO: when the balance is not enough to sell then create only buy order and make sell order still pending
-    orders = spot_requests.get_orders(
-        client=spot_client,
-        symbol=symbol,
-        status="NEW",
-        get_limit=200,
-        log_key=True
-    )
-    start_state_update(symbol[:len(symbol) - 4])
 
-    sleep(1)
-    buy_orders = []
-    sell_orders = []
-    for item in orders:
-        if item['side'] == 'BUY':
-            buy_orders.append(item)
-        elif item['side'] == 'SELL':
-            sell_orders.append(item)
+    orders_in_process = get_orders_in_process_from_db()
 
-    # percen from wallet sum --------------/--------------/--------------/--------------/--------------/
-    # percen from wallet sum --------------/--------------/--------------/--------------/--------------/
-    # percen from wallet sum --------------/--------------/--------------/--------------/--------------/
-    percent_from_wallet_sum = 0.3
-    if (len(sell_orders) < limit_orders_amount) and (len(buy_orders) < limit_orders_amount) and (
-            (
-                    (start_state['Locked'] + start_state['symbol_free_value']) / start_state['usdt_free_value']
-            ) < percent_from_wallet_sum                                                 # ----bad condition----------------
-    ):
-        trade_process(symbol)
+    print("orders_in_process['orders_in_process_cost'] < cost_limit")
+    print(orders_in_process['orders_in_process_cost'], cost_limit)
+    if orders_in_process['orders_in_process_cost'] < cost_limit:
+        trade_process()
 
 
 def start_bot_logic():
@@ -125,11 +295,12 @@ def start_bot_logic():
 
     global sqlh
     sqlh = SQLiteHandler(db_name=db_name, db_dir=base_path)
-    sqlh.create_all_tables(create_all_tables)
+    sqlh.create_all_tables(tables.create_all_tables)
     lh.logger.info(f'sql_handler created, db_name: {db_name}')
 
     try:
         spot_client.get_current_state()
+        spot_client.str_current_state()
         if len(spot_client.current_state_data) > 0:
             sqlh.insert_from_dict('current_state', spot_client.current_state_data)
 
@@ -137,36 +308,19 @@ def start_bot_logic():
         if len(spot_client.filters) > 0:
             sqlh.insert_from_dict('filters', spot_client.filters)
 
-        orders_columns = [
-            'symbol',
-            'orderId',
-            'price',
-            'origQty',
-            'cost',
-            'side',
-            'status',
-            'type',
-            'timeInForce',
-            'workingTime'
-        ]
+        # create_buy_order()
+        #
+        # create_sell_order()
 
-        sqlh.select_from_table('orders', orders_columns)
-
-        orders_from_db = sqlh.select_from_table('orders', orders_columns)
-        orders_fetchall = orders_from_db.fetchall()
-        orders_from_db = sqlh.parse_db_data_to_dict(orders_columns, orders_fetchall)
-
-        orders_to_save = spot_client.update_orders_to_db(get_limit=210, orders_to_sort=orders_from_db)
-        if len(orders_to_save) > 0:
-            for order in orders_to_save:
-                sqlh.insert_from_dict('orders', order)
+        spot_client.cancel_all_new_orders()
+        update_orders_db()
 
         renew_listen_key_counter = 0
         while True:
             print(f'{Tags.BackgroundLightYellow}{Tags.Black}'
                   f'\n      Scheduled if_buy\n'
                   f'{Tags.ResetAll}')
-            # if_buy(f'{symbol}USDT')
+            if_buy()
 
             if (renew_listen_key_counter % 4) == 0:
                 print(f'{Tags.BackgroundLightRed}'
@@ -179,7 +333,15 @@ def start_bot_logic():
                 renew_listen_key_counter = 0
                 print("listen_key is updated:", repr(spot_client.listen_key))
 
+            spot_client.get_current_state()
+            spot_client.str_current_state()
+            if len(spot_client.current_state_data) > 0:
+                sqlh.insert_from_dict('current_state', spot_client.current_state_data)
+
+            update_orders_db()
+
             renew_listen_key_counter += 1
+            print("renew_listen_key_counter: ", renew_listen_key_counter)
             sleep(15)
 
     except KeyboardInterrupt:
@@ -193,74 +355,6 @@ if __name__ == '__main__':
     start_bot_logic()
 
 
-#
-# def trade_process(symbol, profit_percent=0.3):
-#     """
-#     :param symbol: str      | 'BTCUSDT'
-#     :param profit_percent: float   | % of earning Ex: 3 or 0.3 for 3% or 0.3%
-#     """
-#     buy_profit_percent = 1 - (profit_percent / 2) / 100
-#     quantity_precision = 2
-#     price_precision = 4
-#     min_notional = 10 + 0.1
-#
-#     current_cost = float(spot_requests.depth_limit(spot_client, symbol, 1))
-#     buy_price = round(current_cost * buy_profit_percent, price_precision)
-#
-#     if (start_state['usdt_locked_value'] + start_state['usdt_free_value']) * 0.02 < min_notional:
-#         buy_cost = min_notional
-#     else:
-#         buy_cost = (start_state['usdt_locked_value'] + start_state['usdt_free_value']) * 0.02
-#
-#     quantity = buy_cost / current_cost
-#     quantity = f'{quantity:.{quantity_precision}f}'
-#
-#     print(buy_cost)
-#     print(quantity)
-#
-#     buy_key = False
-#     try:
-#         buy_data = spot_requests.buy_order(
-#             client=spot_client,
-#             quantity=quantity,
-#             symbol=symbol,
-#             price=buy_price
-#         )
-#         buy_key = True
-#     except Exception as _ex:
-#         print(_ex)
-#
-#     sleep(1)
-#
-#     if buy_key:
-#         sell_profit_percent = 1 + profit_percent / 100
-#         sell_price = round((current_cost * sell_profit_percent), price_precision)
-#         to_print_data = f"\n             Trade process completed (profit_percent: {profit_percent})" \
-#                         f"\nBuy:      Price: {buy_price}  | Quantity: {quantity}    |" \
-#                         f" Cost: {buy_price * float(quantity)}" \
-#                         f"\nSell:     Price: {sell_price}  | Quantity: {quantity}    |" \
-#                         f" Cost: {sell_price * float(quantity)}"
-#         print(f'{Tags.BackgroundLightGreen}{Tags.Black}{to_print_data}{Tags.ResetAll}')
-#
-#         buy_data.update({'sum': (float(buy_data["price"]) * float(buy_data['quantity']))})
-#         sell_data = buy_data
-#         sell_data.update({'price': sell_price})
-#         sell_data.update({'quantity': quantity})
-#         sell_data.update({'sum': (float(sell_data["price"]) * float(sell_data['quantity']))})
-#         state_history.add_orders_pair(pd.DataFrame([buy_data, sell_data]))
-#
-#         try:
-#             spot_requests.sell_order(
-#                 client=spot_client,
-#                 quantity=quantity,
-#                 symbol=symbol,
-#                 price=sell_price
-#             )
-#
-#         except Exception as _ex:
-#             state_history.add_cannot_sell(sell_price, quantity, symbol)
-#             print(_ex)
-#
 #
 # def rebuild_orders(orders_df, side):
 #     """

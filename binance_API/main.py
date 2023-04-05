@@ -4,9 +4,9 @@ from datetime import datetime
 from decimal import Decimal, getcontext, ROUND_CEILING, ROUND_UP, ROUND_HALF_UP, ROUND_HALF_EVEN, ROUND_HALF_DOWN
 import time
 
-# print(int(time.time()*1000 // 1))
-# print('1564034571105')
-# print('1680625921677')
+print(int(time.time()*1000 // 1))
+print('1564034571105')
+print('1680625921677')
 
 # set_data_dict = {
 #         'balance_first_symbol': 'BTC',
@@ -63,9 +63,34 @@ import time
 # )
 
 # print(datetime.fromtimestamp(1680438211063/1000))
-# print(datetime.utcfromtimestamp(1680438211063/1000))
+# print(datetime.utcfromtimestamp(1680711384376/1000))
 # print(datetime.utcnow())
 
+# print('0000.000001')
+# print((27631.66 * 0.3 * 2 / 3) // 0.000001 * 0.000001)
+# print(27631.66 * 0.3 * 2 / 3)
+#
+# print(
+#     Decimal(
+#         Decimal('27631.66000000') *
+#         Decimal(0.3 * 2 / 3)
+#     )
+# )
+#
+# print(
+#     Decimal(
+#         Decimal('27631.66000000') *
+#         Decimal(0.3 * 2 / 3)
+#     ) // Decimal('0.000001') * Decimal('0.000001')
+# )
+#
+#
+# print(
+#     Decimal(
+#         Decimal('27631.66000000') *
+#         Decimal(0.3 * 2 / 3)
+#     ) // Decimal('0.000002') * Decimal('0.000002')
+# )
 
 # price = getcontext().prec = 20
 # precis = '0.000'
@@ -74,7 +99,7 @@ import time
 # print(Decimal('123.123456789012345678901234567890').quantize(Decimal(precis), rounding=ROUND_HALF_EVEN))
 # print(Decimal('123.123456789012345678901234567890').quantize(Decimal(precis), rounding=ROUND_HALF_UP))
 # print()
-print(Decimal(str(float('0.01000'))))
+# print(Decimal(str(float('0.01000'))))
 # print(Decimal('123.1255'))
 # print(Decimal('123.1255').quantize(Decimal(precis), rounding=ROUND_HALF_DOWN))
 # print(Decimal('123.1255').quantize(Decimal(precis), rounding=ROUND_HALF_EVEN))

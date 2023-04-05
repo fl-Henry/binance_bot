@@ -33,7 +33,7 @@ class SQLiteHandler:
             self.cursor.execute(create_table_command)
 
     def select_from_table(self, table, column_names: list, where_col: str = None, where_col_val: str = None,
-                          where_condition: str = None):
+                          where_condition: str = None, conditions: str = None):
 
         try:
             self.check_sec(table)
@@ -41,6 +41,7 @@ class SQLiteHandler:
             self.check_sec(str(where_col))
             self.check_sec(str(where_col_val))
             self.check_sec(str(where_condition))
+            self.check_sec(str(conditions))
         except sqlite3.OperationalError as _ex:
             print('sqlite3.OperationalError')
 
@@ -49,7 +50,8 @@ class SQLiteHandler:
             if (where_col is not None) and (where_col_val is not None) and (where_condition is not None):
                 print('[ERROR] select_from_table > too many args')
             else:
-                if (where_col is None) and (where_col_val is None) and (where_condition is None):
+                if (where_col is None) and (where_col_val is None) and (where_condition is None)\
+                        and (conditions is None):
                     sql_command = f"SELECT {', '.join([str(x) for x in column_names])} FROM {table};"
                 elif where_col is not None and where_col_val is not None:
                     sql_command = f"SELECT {', '.join([str(x) for x in column_names])} FROM {table} " \
@@ -57,7 +59,11 @@ class SQLiteHandler:
                 elif where_condition is not None:
                     sql_command = f"SELECT {', '.join([str(x) for x in column_names])} FROM {table} " \
                                   f"WHERE {where_condition};"
+                elif conditions is not None:
+                    sql_command = f"SELECT {', '.join([str(x) for x in column_names])} FROM {table} " \
+                                  f"{conditions};"
                 if sql_command != '':
+                    print(sql_command)
                     return self.cursor.execute(sql_command)
 
     @staticmethod
