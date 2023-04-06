@@ -63,7 +63,7 @@ class SQLiteHandler:
                     sql_command = f"SELECT {', '.join([str(x) for x in column_names])} FROM {table} " \
                                   f"{conditions};"
                 if sql_command != '':
-                    print(sql_command)
+                    # print(sql_command)
                     return self.cursor.execute(sql_command)
 
     @staticmethod
@@ -78,7 +78,19 @@ class SQLiteHandler:
         return result_list
 
     def update(self, table, set_data_dict, where_condition: str = None):
+        """
+            UPDATE employees                // table = 'employees'
+            SET
+                city = 'Toronto',           // set_data_dict = {'city': 'Toronto',
+                state = 'ON',               //                  'state': 'ON',
+                postalcode = 'M5P 2N7'      //                  'postalcode': 'M5P 2N7'}
+            WHERE
+                employeeid = 4;             // where_condition = 'employeeid = 4'
 
+        :param table: str
+        :param set_data_dict: dict
+        :param where_condition: str
+        """
         try:
             self.check_sec(table)
             self.check_sec(set_data_dict)

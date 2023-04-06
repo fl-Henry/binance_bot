@@ -1,6 +1,7 @@
 import os
 import argparse
 import time
+from random import randint
 from time import sleep
 import pandas as pd
 
@@ -38,6 +39,49 @@ def create_sell_order():
         price=spot_client.depth_limit(20, side='asks'),
         timeInForce="GTC"
     )
+
+
+def create_buy_order_from_dict(order):
+    try:
+        if Decimal(spot_client.current_state_data['balance_second_symbol_free_value']) > Decimal(order['cost']):
+            spot_client.new_order(
+                symbol=spot_client.symbol,
+                quantity=str(order['origQty']),
+                side='BUY',
+                type="LIMIT",
+                price=str(order['price']),
+                timeInForce="GTC"
+            )
+            order_created_print = f"\n{Tags.LightBlue}---- Order created --------------------------------------------" \
+                                  f"\n[{order['symbol']}] P:{order['price']}; Q:{order['origQty']}; " \
+                                  f"C:{order['cost']}; Si:{order['side']};" \
+                                  f"{Tags.ResetAll}"
+            print(order_created_print)
+
+    except Exception as _ex:
+        print('[ERROR] create_buy_order_from_dict > ', _ex)
+
+
+def create_sell_order_from_dict(order):
+    try:
+        if Decimal(spot_client.current_state_data['balance_first_symbol_free_value']) > Decimal(order['origQty']):
+            spot_client.new_order(
+                symbol=spot_client.symbol,
+                quantity=str(order['origQty']),
+                side='SELL',
+                type="LIMIT",
+                price=str(order['price']),
+                timeInForce="GTC"
+            )
+
+            order_created_print = f"\n{Tags.LightBlue}---- Order created --------------------------------------------" \
+                                  f"\n[{order['symbol']}] P:{order['price']}; Q:{order['origQty']}; " \
+                                  f"C:{order['cost']}; Si:{order['side']};" \
+                                  f"{Tags.ResetAll}"
+            print(order_created_print)
+
+    except Exception as _ex:
+        print('[ERROR] create_sell_order_from_dict > ', _ex)
 
 
 def update_orders_db():
@@ -84,16 +128,46 @@ def get_orders_in_process_from_db():
     orders_in_process = sort_orders_by_status([*pending_orders_from_db, *orders_from_db])
     orders_in_process_buy = sort_orders_by_side(orders_in_process, 'BUY')
     orders_in_process_sell = sort_orders_by_side(orders_in_process, 'SELL')
+    orders_in_process_pending = sort_orders_by_status(orders_in_process, ['PENDING'])
+
     orders_in_process_cost = 0
     for order in orders_in_process:
         orders_in_process_cost = orders_in_process_cost + float(order['cost'])
 
     return {
-        'orders_in_process': orders_in_process,
-        'orders_in_process_cost': orders_in_process_cost,
-        'orders_in_process_buy': orders_in_process_buy,
-        'orders_in_process_sell': orders_in_process_sell,
+        'orders': orders_in_process,
+        'orders_cost': orders_in_process_cost,
+        'orders_buy': orders_in_process_buy,
+        'orders_sell': orders_in_process_sell,
+        'orders_pending': orders_in_process_pending,
     }
+
+
+def new_order_from_pending_db(pending_orders):
+    sell_orders = sort_orders_by_side(pending_orders, side_list=["SELL"])
+    buy_orders = sort_orders_by_side(pending_orders, side_list={"BUY"})
+
+    if len(sell_orders) > 0:
+        sell_orders_df = pd.DataFrame(
+            sell_orders,
+            columns=['symbol', 'price', 'origQty', 'cost', 'side', 'status']
+        )
+        sell_orders_df = sell_orders_df.sort_values(['price']).reset_index(drop=False)
+
+        print(f'\n{Tags.LightBlue}pending_sell_orders_df{Tags.ResetAll}\n{sell_orders_df}')
+
+        create_sell_order_from_dict(sell_orders[sell_orders_df['index'][0]])
+
+    if len(buy_orders) > 0:
+        buy_orders_df = pd.DataFrame(
+                buy_orders,
+                columns=['symbol', 'price', 'origQty', 'cost', 'side', 'status']
+            )
+        buy_orders_df = buy_orders_df.sort_values(['price'], ascending=False).reset_index(drop=False)
+
+        print(f'\n{Tags.LightBlue}pending_buy_orders_df{Tags.ResetAll}\n{buy_orders_df}')
+
+        create_buy_order_from_dict(buy_orders[buy_orders_df['index'][0]])
 
 
 def trade_process():
@@ -133,12 +207,6 @@ def trade_process():
             Decimal(sell_price) * Decimal(quantity)
     ) // Decimal(spot_client.filters['PRICE_FILTER_tickSize']) * Decimal(spot_client.filters['PRICE_FILTER_tickSize'])
 
-    to_print_data = f"\n             Trade process completed (profit_percent: {profit_percent})" \
-                    f"\nBuy:      Price: {buy_price}  | Quantity: {quantity}    |    Cost: {buy_cost}" \
-                    f"\nSell:     Price: {sell_price}  | Quantity: {quantity}    |    Cost: {sell_cost}"
-
-    print(f'{Tags.BackgroundLightGreen}{Tags.Black}{to_print_data}{Tags.ResetAll}')
-
     buy_order_to_db = {
         "symbol": str(spot_client.symbol),
         "price": str(buy_price),
@@ -167,42 +235,14 @@ def trade_process():
     }
     sqlh.insert_from_dict('orders_pair', pair_pk_to_db)
 
-    # buy_key = False
-    # try:
-    #     buy_data = spot_requests.buy_order(
-    #         client=spot_client,
-    #         quantity=quantity,
-    #         symbol=symbol,
-    #         price=buy_price
-    #     )
-    #     buy_key = True
-    # except Exception as _ex:
-    #     print(_ex)
-    #
-    # sleep(1)
-    #
-    # if buy_key:
-    #
-    #
-    #
-    #     buy_data.update({'sum': (float(buy_data["price"]) * float(buy_data['quantity']))})
-    #     sell_data = buy_data
-    #     sell_data.update({'price': sell_price})
-    #     sell_data.update({'quantity': quantity})
-    #     sell_data.update({'sum': (float(sell_data["price"]) * float(sell_data['quantity']))})
-    #     state_history.add_orders_pair(pd.DataFrame([buy_data, sell_data]))
-    #
-    #     try:
-    #         spot_requests.sell_order(
-    #             client=spot_client,
-    #             quantity=quantity,
-    #             symbol=symbol,
-    #             price=sell_price
-    #         )
-    #
-    #     except Exception as _ex:
-    #         state_history.add_cannot_sell(sell_price, quantity, symbol)
-    #         print(_ex)
+    to_print_data = f"\n             Pending orders created (profit_percent: {profit_percent})" \
+                    f"\nBuy:      Price: {buy_price}  | Quantity: {quantity}    |    Cost: {buy_cost}" \
+                    f"\nSell:     Price: {sell_price}  | Quantity: {quantity}    |    Cost: {sell_cost}"
+
+    print(f'{Tags.BackgroundLightGreen}{Tags.Black}{to_print_data}{Tags.ResetAll}')
+
+    create_buy_order_from_dict(buy_order_to_db)
+    create_sell_order_from_dict(sell_order_to_db)
 
 
 def if_buy():
@@ -214,12 +254,15 @@ def if_buy():
 
     # TODO: when the balance is not enough to sell then create only buy order and make sell order still pending
 
+    key_to_trade_process = True
     orders_in_process = get_orders_in_process_from_db()
 
-    print("orders_in_process['orders_in_process_cost'] < cost_limit")
-    print(orders_in_process['orders_in_process_cost'], cost_limit)
-    if orders_in_process['orders_in_process_cost'] < cost_limit:
+    if len(orders_in_process['orders_pending']) > 0:
+        new_order_from_pending_db(orders_in_process['orders_pending'])
+    elif (orders_in_process['orders_cost'] < cost_limit) and key_to_trade_process:
         trade_process()
+    else:
+        print('[WARNING] if_buy > orders creation failed')
 
 
 def start_bot_logic():
@@ -241,8 +284,8 @@ def start_bot_logic():
                         help='Symbol of token to buy Ex: "BTC"')
     parser.add_argument('--second-symbol', dest='second_symbol', default='USDT',
                         help='Symbol of token as money Ex: "USDT"')
-    parser.add_argument('--id', dest='id', default=3,
-                        help='Id of callback Ex: 3')
+    parser.add_argument('--id', dest='id', default=4,
+                        help='Id of callback Ex: 4')
     parser.add_argument('--test', dest='test_key', nargs='?', const=True, default=False,
                         help='Enable test mode')
     parser.add_argument('--force-url', dest='force_url', nargs='?', const=True, default=False,
@@ -279,67 +322,96 @@ def start_bot_logic():
         listen_key=spot_client.listen_key
     )
 
-    base_path = str(__file__)[:len(__file__) - len(os.path.basename(str(__file__))) - 1]
-    if test_key:
-        db_name = f"test_{first_symbol}{second_symbol}"
-    else:
-        db_name = f"{first_symbol}{second_symbol}"
+    if id_arg == 4:
 
-    global sqlh
-    sqlh = SQLiteHandler(db_name=db_name, db_dir=base_path)
-    sqlh.create_all_tables(tables.create_all_tables)
+        base_path = str(__file__)[:len(__file__) - len(os.path.basename(str(__file__))) - 1]
+        if test_key:
+            db_name = f"test_{first_symbol}{second_symbol}"
+        else:
+            db_name = f"{first_symbol}{second_symbol}"
 
-    try:
-        spot_client.get_current_state()
-        spot_client.str_current_state()
-        if len(spot_client.current_state_data) > 0:
-            sqlh.insert_from_dict('current_state', spot_client.current_state_data)
+        global sqlh
+        sqlh = SQLiteHandler(db_name=db_name, db_dir=base_path)
+        sqlh.create_all_tables(tables.create_all_tables)
 
-        spot_client.get_exchange_info()
-        if len(spot_client.filters) > 0:
-            sqlh.insert_from_dict('filters', spot_client.filters)
-
-        # create_buy_order()
-        #
-        # create_sell_order()
-
-        spot_client.cancel_all_new_orders()
-        update_orders_db()
-
-        renew_listen_key_counter = 0
-        while True:
-            print(f'{Tags.BackgroundLightYellow}{Tags.Black}'
-                  f'\n      Scheduled if_buy\n'
-                  f'{Tags.ResetAll}')
-            if_buy()
-
-            if (renew_listen_key_counter % 4) == 0:
-                print(f'{Tags.BackgroundLightRed}'
-                      f'\n      Scheduled if_cancel\n'
-                      f'{Tags.ResetAll}')
-                # if_cancel(f'{symbol}USDT')
-
-            if renew_listen_key_counter >= 120:
-                spot_client.renew_listen_key(spot_client.listen_key)
-                renew_listen_key_counter = 0
-                print("listen_key is updated:", repr(spot_client.listen_key))
-
+        try:
             spot_client.get_current_state()
             spot_client.str_current_state()
             if len(spot_client.current_state_data) > 0:
                 sqlh.insert_from_dict('current_state', spot_client.current_state_data)
 
+            spot_client.get_exchange_info()
+            if len(spot_client.filters) > 0:
+                sqlh.insert_from_dict('filters', spot_client.filters)
+
+            # create_buy_order()
+            #
+            # create_sell_order()
+
+            spot_client.cancel_all_new_orders()
             update_orders_db()
 
-            renew_listen_key_counter += 1
-            print("renew_listen_key_counter: ", renew_listen_key_counter)
-            sleep(15)
+            renew_listen_key_counter = 0
+            while True:
+                print(f'{Tags.BackgroundLightYellow}{Tags.Black}'
+                      f'\n      Scheduled if_buy\n'
+                      f'{Tags.ResetAll}')
+                if_buy()
 
-    except KeyboardInterrupt:
-        ...
-    finally:
-        web_socket.stop()
-        sqlh.close()
+                # if (renew_listen_key_counter % 4) == 0:
+                #     print(f'{Tags.BackgroundLightRed}'
+                #           f'\n      Scheduled if_cancel\n'
+                #           f'{Tags.ResetAll}')
+                #     if_cancel(f'{symbol}USDT')
+
+                if renew_listen_key_counter >= 120:
+                    spot_client.renew_listen_key(spot_client.listen_key)
+                    renew_listen_key_counter = 0
+                    print("listen_key is updated:", repr(spot_client.listen_key))
+
+                key_to_exit_from_update_loop = True
+                while key_to_exit_from_update_loop:
+                    try:
+                        spot_client.get_current_state()
+                        spot_client.str_current_state()
+                        if len(spot_client.current_state_data) > 0:
+                            sqlh.insert_from_dict('current_state', spot_client.current_state_data)
+
+                        update_orders_db()
+                        key_to_exit_from_update_loop = False
+                    except Exception as _ex:
+                        print("[ERROR] start_bot_logic > id_arg == 4 > ", _ex)
+                        key_to_exit_from_update_loop = True
+                        time.sleep(randint(1, 10))
+
+                renew_listen_key_counter += 1
+                print("renew_listen_key_counter: ", renew_listen_key_counter)
+                sleep(15)
+
+        except KeyboardInterrupt:
+            ...
+        finally:
+            web_socket.stop()
+            print('web_socket.stop()')
+            sqlh.close()
+            print('sqlh.close()')
+
+    elif id_arg == 3:
+        try:
+            web_socket.stream_user_data()
+
+            while True:
+                sleep(60)
+
+        except KeyboardInterrupt:
+            ...
+        finally:
+            web_socket.stop()
+            print('web_socket.stop()')
+    else:
+        print("[ERROR] start_bot_logic > id_arg is out of range | expected 3 or 4")
+        print("id_arg = 3 > web_socket.stream_user_data()")
+        print("id_arg = 4 > web_socket.stream_execution_reports()")
 
 
 if __name__ == '__main__':

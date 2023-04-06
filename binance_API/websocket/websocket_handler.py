@@ -1,15 +1,20 @@
+import time
+from random import randint
 
-from datetime import datetime
+import pandas as pd
+
 from binance.websocket.spot.websocket_client import SpotWebsocketClient
 from decimal import Decimal, ROUND_HALF_UP
 
 from .. import Kiss
+from ..print_tags import Tags
 
 
 class WebsocketClient(SpotWebsocketClient):
 
     def __init__(self, test_key=False, force_url=False, first_symbol='BTC', second_symbol='USDT', listen_key=None):
 
+        self.sqlh = None
         self.first_symbol = first_symbol
         self.second_symbol = second_symbol
         self.symbol = f"{self.first_symbol}{self.second_symbol}"
@@ -73,10 +78,62 @@ class WebsocketClient(SpotWebsocketClient):
             print(f'[SYMBOL]  --------- HIGH -------:::::::: UP '
                   f'::::::::::::::: DOWN :::::::-------- LOW ---------')
 
+    def _execution_reports(self, response, sqlh=None):
+        if sqlh is not None:
+            self.sqlh = sqlh
+        table = 'pending_orders'
+
+        if response.get('e') == 'executionReport':
+            response_data = {
+                'symbol': str(response.get('s')),
+                'orderId': int(response.get('i')),
+                'price': str(response.get('p')),
+                'origQty': str(response.get('q')),
+                'cost': (Decimal(response.get('p')) * Decimal(response.get('q'))).quantize(
+                    Decimal('0.00000000'),
+                    rounding=ROUND_HALF_UP
+                ),
+                'side': str(response.get('S')),
+                'status': str(response.get('X')),
+                'type': str(response.get('o')),
+                'timeInForce': str(response.get('f')),
+                'workingTime': int(response.get('W')),
+            }
+
+            key_to_exit_from_update_loop = True
+            while key_to_exit_from_update_loop:
+                try:
+                    if response_data['status'] == 'NEW':
+                        where_condition = f"price = {repr(str(response_data['price']))}"
+                        order_pk = self.sqlh.select_from_table(table, ['pk'], where_condition=where_condition)
+                        pk = order_pk.fetchall()[0][0]
+                        set_data_dict = {'orderId': int(response.get('i'))}
+                        where_condition = f'pk = {pk}'
+                        self.sqlh.update(table, set_data_dict, where_condition=where_condition)
+
+                    elif response_data['status'] in ['FILLED', 'CANCELED']:
+                        where_condition = f"orderId = {repr(str(response_data['orderId']))}"
+                        order_pk = self.sqlh.select_from_table(table, ['pk'], where_condition=where_condition)
+                        pk = order_pk.fetchall()[0][0]
+                        set_data_dict = {'status': str(response.get('X'))}
+                        where_condition = f'pk = {pk}'
+                        self.sqlh.update(table, set_data_dict, where_condition=where_condition)
+
+                    else:
+                        print('[WARNING] report_execution_handler > execution report was not handled')
+                    key_to_exit_from_update_loop = False
+
+                except Exception as _ex:
+                    print("[ERROR] _execution_reports > ", _ex)
+                    key_to_exit_from_update_loop = True
+                    time.sleep(randint(1, 10))
+
     def _user_data(self, response):
         """
             :param response: Payload       'executionReport', 'balanceUpdate', 'outboundAccountPosition'
         """
+
+        # pd.set_option('display.max_columns', None)
 
         if response.get('e') == 'executionReport':
 
@@ -145,9 +202,21 @@ class WebsocketClient(SpotWebsocketClient):
                 'status': str(response.get('X')),
                 'type': str(response.get('o')),
                 'timeInForce': str(response.get('f')),
-                'transactTime': int(response.get('T')),
                 'workingTime': int(response.get('W')),
             }
+
+            output_df = pd.DataFrame(
+                [response_data],
+                columns=['symbol', 'price', 'origQty', 'cost', 'side', 'status']
+            )
+
+            if response_data['status'] == 'FILLED':
+                print(f'\n{Tags.LightBlue}{Tags.BackgroundLightMagenta}Execution Report\n{Tags.ResetAll}{output_df}')
+            elif response_data['status'] == 'NEW':
+                print(f'\n{Tags.LightBlue}Execution Report\n{Tags.ResetAll}{output_df}')
+            else:
+                print(f'\n{Tags.White}{Tags.BackgroundCyan}Execution Report\n{output_df}{Tags.ResetAll}')
+
             # return response_data
 
         elif response.get('e') == 'balanceUpdate':
@@ -173,6 +242,12 @@ class WebsocketClient(SpotWebsocketClient):
                 'Balance Delta': response.get('d'),
                 'Clear Time': response.get('T')
             }
+
+            output_df = pd.DataFrame(
+                [response_data]
+            )
+            print(f'\n{Tags.LightBlue}{Tags.BackgroundLightGray}Balance Update\n{output_df}{Tags.ResetAll}')
+
             # return response_data
 
         elif response.get('e') == 'outboundAccountPosition':
@@ -217,6 +292,15 @@ class WebsocketClient(SpotWebsocketClient):
 
                 'time': int(response.get('E'))
             }
+            output = f"\nTIME: {current_state['time']}" \
+                     f"\nSMB: {current_state['balance_first_symbol']};" \
+                     f" FREE: {current_state['balance_first_symbol_free_value']};" \
+                     f" LOCKED: {current_state['balance_first_symbol_locked_value']}" \
+                     f"\nSMB: {current_state['balance_second_symbol']};" \
+                     f" FREE: {current_state['balance_second_symbol_free_value']};" \
+                     f" LOCKED: {current_state['balance_second_symbol_locked_value']}"
+            print(output)
+
             # return current_state
         else:
             print(repr(response))
@@ -244,6 +328,22 @@ class WebsocketClient(SpotWebsocketClient):
                 self.listen_key,
                 id=3,
                 callback=self._user_data
+            )
+        else:
+            raise KeyError('listen_key is None')
+
+    def stream_execution_reports(self, sqlh):
+        """
+
+        :param sqlh: SQLiteHandler
+        :return:
+        """
+        if self.listen_key is not None:
+            self.sqlh = sqlh
+            self.user_data(
+                self.listen_key,
+                id=4,
+                callback=self._execution_reports()
             )
         else:
             raise KeyError('listen_key is None')
