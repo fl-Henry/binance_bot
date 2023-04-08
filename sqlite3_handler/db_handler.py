@@ -8,12 +8,15 @@ except ModuleNotFoundError:
 
 class SQLiteHandler:
 
-    def __init__(self, db_name='sqlite', db_dir='.'):
+    def __init__(self, db_name='sqlite', db_dir='.', check_same_thread=None):
 
         self.db_dir = db_dir
         self.db_name = f"{db_name}.db"
         self.db_path = f"{self.db_dir}/{self.db_name}"
-        self.connected_db = sqlite3.connect(self.db_path)
+        if check_same_thread is not None:
+            self.connected_db = sqlite3.connect(self.db_path, check_same_thread=check_same_thread)
+        else:
+            self.connected_db = sqlite3.connect(self.db_path)
         self.cursor = self.connected_db.cursor()
 
     def close(self):
@@ -112,9 +115,10 @@ class SQLiteHandler:
                 WHERE
                     {where_condition};
             """
-
+            # print(sql_command)
             if sql_command != '':
-                return self.cursor.execute(sql_command)
+                self.cursor.execute(sql_command)
+                self.connected_db.commit()
 
     def insert(self, table, column_names: list, values: list):
         try:

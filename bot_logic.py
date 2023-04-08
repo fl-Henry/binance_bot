@@ -1,6 +1,7 @@
 import os
 import argparse
 import time
+from datetime import datetime
 from random import randint
 from time import sleep
 import pandas as pd
@@ -15,7 +16,7 @@ from print_tags import Tags
 spot_client: SpotClient
 sqlh: SQLiteHandler
 
-cost_limit = 500
+cost_limit = 60
 profit_percent = 0.3
 
 
@@ -129,64 +130,94 @@ def get_orders_in_process_from_db():
     orders_in_process_buy = sort_orders_by_side(orders_in_process, 'BUY')
     orders_in_process_sell = sort_orders_by_side(orders_in_process, 'SELL')
     orders_in_process_pending = sort_orders_by_status(orders_in_process, ['PENDING'])
+    orders_in_process_new = sort_orders_by_status(orders_from_db, ['NEW'])
 
     orders_in_process_cost = 0
-    for order in orders_in_process:
+    for order in orders_in_process_new:
         orders_in_process_cost = orders_in_process_cost + float(order['cost'])
 
     return {
         'orders': orders_in_process,
-        'orders_cost': orders_in_process_cost,
+        'orders_new_cost': orders_in_process_cost,
         'orders_buy': orders_in_process_buy,
         'orders_sell': orders_in_process_sell,
         'orders_pending': orders_in_process_pending,
+        'orders_new': orders_in_process_new,
     }
+
+
+def sorted_df_from_lost_of_orders(orders, header: str = None, key_to_print=False, columns=None, sort_col='price',
+                                  ascending=True, reset_index=True):
+    """
+
+    :param orders:
+    :param header:
+    :param key_to_print:
+    :param columns:
+    :param sort_col:
+    :param ascending: bool      | True -> min to max
+    :param reset_index:
+    :return:
+    """
+    if columns is None:
+        columns = ['symbol', 'orderId', 'price', 'origQty', 'cost', 'side', 'status']
+
+    if len(orders) > 0:
+        orders_df = pd.DataFrame(
+            orders,
+            columns=columns
+        )
+        orders_df = orders_df.sort_values([sort_col], ascending=ascending).reset_index(drop=reset_index)
+
+        if key_to_print:
+            print(f'\n{Tags.LightBlue}{header}{Tags.ResetAll}\n{orders_df}')
+
+        return orders_df
 
 
 def new_order_from_pending_db(pending_orders):
     sell_orders = sort_orders_by_side(pending_orders, side_list=["SELL"])
-    buy_orders = sort_orders_by_side(pending_orders, side_list={"BUY"})
+    buy_orders = sort_orders_by_side(pending_orders, side_list=["BUY"])
 
+    sell_orders_df = sorted_df_from_lost_of_orders(
+        sell_orders,
+        header='--- Pending SELL orders ------------------',
+        key_to_print=True,
+        sort_col='price',
+        reset_index=False
+    )
     if len(sell_orders) > 0:
-        sell_orders_df = pd.DataFrame(
-            sell_orders,
-            columns=['symbol', 'price', 'origQty', 'cost', 'side', 'status']
-        )
-        sell_orders_df = sell_orders_df.sort_values(['price']).reset_index(drop=False)
-
-        print(f'\n{Tags.LightBlue}pending_sell_orders_df{Tags.ResetAll}\n{sell_orders_df}')
-
         create_sell_order_from_dict(sell_orders[sell_orders_df['index'][0]])
 
+    buy_orders_df = sorted_df_from_lost_of_orders(
+        buy_orders,
+        header='--- Pending BUY orders -------------------',
+        key_to_print=True,
+        sort_col='price',
+        ascending=False,
+        reset_index=False
+    )
     if len(buy_orders) > 0:
-        buy_orders_df = pd.DataFrame(
-                buy_orders,
-                columns=['symbol', 'price', 'origQty', 'cost', 'side', 'status']
-            )
-        buy_orders_df = buy_orders_df.sort_values(['price'], ascending=False).reset_index(drop=False)
-
-        print(f'\n{Tags.LightBlue}pending_buy_orders_df{Tags.ResetAll}\n{buy_orders_df}')
-
         create_buy_order_from_dict(buy_orders[buy_orders_df['index'][0]])
 
 
 def trade_process():
     """
     """
-    buy_profit_percent = 1 - (profit_percent * 2 / 3) / 100
-    sell_profit_percent = 1 + (profit_percent * 1 / 3) / 100
+    buy_profit_percent = 1 - (profit_percent * 3 / 5) / 100
+    sell_profit_percent = 1 + (profit_percent * 2 / 5) / 100
 
     buy_price = Decimal(
         Decimal(spot_client.current_state_data['order_book_bid_current_price']) *
         Decimal(buy_profit_percent)
     ) // Decimal(spot_client.filters['PRICE_FILTER_tickSize']) * Decimal(spot_client.filters['PRICE_FILTER_tickSize'])
 
-    if cost_limit * 0.1 < float(spot_client.filters['MIN_NOTIONAL_minNotional']):
+    if Decimal(str(cost_limit)) * Decimal('0.09') < Decimal(spot_client.filters['MIN_NOTIONAL_minNotional']):
         purchase_cost = (Decimal(spot_client.filters['MIN_NOTIONAL_minNotional']) * Decimal('1.01')).quantize(
             Decimal('0.00000000'), rounding=ROUND_HALF_UP
         )
     else:
-        purchase_cost = (Decimal(cost_limit) * Decimal('0.1')).quantize(
+        purchase_cost = (Decimal(cost_limit) * Decimal('0.11')).quantize(
             Decimal('0.00000000'), rounding=ROUND_HALF_UP
         )
 
@@ -254,15 +285,30 @@ def if_buy():
 
     # TODO: when the balance is not enough to sell then create only buy order and make sell order still pending
 
-    key_to_trade_process = True
     orders_in_process = get_orders_in_process_from_db()
+
+    sorted_df_from_lost_of_orders(
+        orders_in_process['orders_new'],
+        header='--- New orders ---------------------------',
+        key_to_print=True,
+        sort_col='price',
+        ascending=True,
+        reset_index=True
+    )
+    # print("if_buy")
+    # sleep(60)
 
     if len(orders_in_process['orders_pending']) > 0:
         new_order_from_pending_db(orders_in_process['orders_pending'])
-    elif (orders_in_process['orders_cost'] < cost_limit) and key_to_trade_process:
+    elif orders_in_process['orders_new_cost'] < cost_limit:
+        print("\nOrders in process cost:", orders_in_process['orders_new_cost'])
+        print('Cost limit', cost_limit)
+        print('Start trade_process:')
         trade_process()
     else:
-        print('[WARNING] if_buy > orders creation failed')
+        print("\nOrders in process cost:", orders_in_process['orders_new_cost'])
+        print('Cost limit', cost_limit)
+        print('Skip')
 
 
 def start_bot_logic():
@@ -294,7 +340,7 @@ def start_bot_logic():
 
     first_symbol = args.first_symbol
     second_symbol = args.second_symbol
-    id_arg = args.id
+    id_arg = int(args.id)
     test_key = args.test_key
     force_url = args.force_url
 
@@ -307,22 +353,23 @@ def start_bot_logic():
     )
 
     global spot_client
-    spot_client = SpotClient(
-        test_key=test_key,
-        force_url=force_url,
-        first_symbol=first_symbol,
-        second_symbol=second_symbol
-    )
-
-    web_socket = WebsocketClient(
-        test_key=test_key,
-        force_url=force_url,
-        first_symbol=first_symbol,
-        second_symbol=second_symbol,
-        listen_key=spot_client.listen_key
-    )
 
     if id_arg == 4:
+
+        spot_client = SpotClient(
+            test_key=test_key,
+            force_url=force_url,
+            first_symbol=first_symbol,
+            second_symbol=second_symbol
+        )
+
+        web_socket = WebsocketClient(
+            test_key=test_key,
+            force_url=force_url,
+            first_symbol=first_symbol,
+            second_symbol=second_symbol,
+            listen_key=spot_client.listen_key
+        )
 
         base_path = str(__file__)[:len(__file__) - len(os.path.basename(str(__file__))) - 1]
         if test_key:
@@ -335,6 +382,8 @@ def start_bot_logic():
         sqlh.create_all_tables(tables.create_all_tables)
 
         try:
+            web_socket.stream_execution_reports(db_name=db_name, db_dir=base_path)
+
             spot_client.get_current_state()
             spot_client.str_current_state()
             if len(spot_client.current_state_data) > 0:
@@ -344,17 +393,16 @@ def start_bot_logic():
             if len(spot_client.filters) > 0:
                 sqlh.insert_from_dict('filters', spot_client.filters)
 
-            # create_buy_order()
-            #
-            # create_sell_order()
+            # print("DEBUG")
+            # spot_client.cancel_all_new_orders()
+            # sleep(30)
 
-            spot_client.cancel_all_new_orders()
             update_orders_db()
 
             renew_listen_key_counter = 0
             while True:
                 print(f'{Tags.BackgroundLightYellow}{Tags.Black}'
-                      f'\n      Scheduled if_buy\n'
+                      f'\n      Scheduled if_buy'
                       f'{Tags.ResetAll}')
                 if_buy()
 
@@ -364,13 +412,19 @@ def start_bot_logic():
                 #           f'{Tags.ResetAll}')
                 #     if_cancel(f'{symbol}USDT')
 
-                if renew_listen_key_counter >= 120:
+                if renew_listen_key_counter >= 15:
                     spot_client.renew_listen_key(spot_client.listen_key)
                     renew_listen_key_counter = 0
                     print("listen_key is updated:", repr(spot_client.listen_key))
 
-                key_to_exit_from_update_loop = True
-                while key_to_exit_from_update_loop:
+                resp_type_pr = f'---- UTC time -------------------------------------- ' \
+                               f'{str(datetime.utcfromtimestamp(int(time.time()))):<20}' \
+                               f' ----'
+                print(f'\n{Tags.LightBlue}{resp_type_pr}{Tags.ResetAll}')
+                print('Waiting 180 sec')
+                sleep(180)
+                while_counter = 0
+                while while_counter < 6:
                     try:
                         spot_client.get_current_state()
                         spot_client.str_current_state()
@@ -378,25 +432,48 @@ def start_bot_logic():
                             sqlh.insert_from_dict('current_state', spot_client.current_state_data)
 
                         update_orders_db()
-                        key_to_exit_from_update_loop = False
+                        while_counter = 20
+
                     except Exception as _ex:
                         print("[ERROR] start_bot_logic > id_arg == 4 > ", _ex)
-                        key_to_exit_from_update_loop = True
+                        while_counter += 1
                         time.sleep(randint(1, 10))
 
                 renew_listen_key_counter += 1
                 print("renew_listen_key_counter: ", renew_listen_key_counter)
-                sleep(15)
 
         except KeyboardInterrupt:
             ...
         finally:
             web_socket.stop()
-            print('web_socket.stop()')
+            print(f'\n{Tags.LightYellow}WebSocket is stopped{Tags.ResetAll}')
             sqlh.close()
-            print('sqlh.close()')
+            print(f'\n{Tags.LightYellow}SQL handler closed{Tags.ResetAll}')
+            print("Sleep 5 sec:")
+            for counter in range(1, 6):
+                print('Sleep progress: ', end='')
+                print("." * counter)
+                sleep(1)
 
     elif id_arg == 3:
+
+        spot_client = SpotClient(
+            test_key=test_key,
+            force_url=force_url,
+            low_permissions=True,
+            first_symbol=first_symbol,
+            second_symbol=second_symbol
+        )
+
+        web_socket = WebsocketClient(
+            test_key=test_key,
+            force_url=force_url,
+            low_permissions=True,
+            first_symbol=first_symbol,
+            second_symbol=second_symbol,
+            listen_key=spot_client.listen_key
+        )
+
         try:
             web_socket.stream_user_data()
 
@@ -407,7 +484,12 @@ def start_bot_logic():
             ...
         finally:
             web_socket.stop()
-            print('web_socket.stop()')
+            print(f'\n{Tags.LightYellow}WebSocket is stopped{Tags.ResetAll}')
+            print("Sleep 5 sec:")
+            for counter in range(1, 6):
+                print('Sleep progress: ', end='')
+                print("." * counter)
+                sleep(1)
     else:
         print("[ERROR] start_bot_logic > id_arg is out of range | expected 3 or 4")
         print("id_arg = 3 > web_socket.stream_user_data()")

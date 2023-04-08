@@ -5,6 +5,8 @@ from decimal import Decimal, getcontext, ROUND_CEILING, ROUND_UP, ROUND_HALF_UP,
 import time
 
 print(int(time.time()*1000 // 1))
+print(datetime.utcfromtimestamp(int(time.time())))
+print(datetime.utcfromtimestamp(1680748199149/1000))
 print('1564034571105')
 print('1680625921677')
 

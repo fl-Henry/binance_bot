@@ -36,7 +36,7 @@ do
       shift
       id="$1"
       str_param+="--id $id "
-      printf "%s " " id='$id';"
+      printf "%s " " id=$id;"
       ;;
      --test)
       test="--test"

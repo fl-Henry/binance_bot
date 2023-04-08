@@ -4,13 +4,16 @@ import time
 from binance.spot import Spot
 from decimal import Decimal, ROUND_HALF_UP
 
-from .. import Kiss
+try:
+    from .. import Kiss
+except ImportError:
+    import binance_API.Kiss as Kiss
 
 
 class SpotClient(Spot):
     # TODO: DB cancel orders
 
-    def __init__(self, test_key=False, force_url=False, first_symbol='BTC', second_symbol='USDT'):
+    def __init__(self, test_key=False, force_url=False, low_permissions=False, first_symbol='BTC', second_symbol='USDT'):
         """
         Spot client init
         :param test_key: bool       | False
@@ -32,27 +35,28 @@ class SpotClient(Spot):
         self.second_symbol = second_symbol
         self.symbol = f"{self.first_symbol}{self.second_symbol}"
 
+        api_key, api_secret, base_url, stream_url = Kiss.get_api_credentials(test_key, low_permissions)
+
         if test_key:
-            print("Spot URL:", Kiss.BASE_URL_TEST)
+            print("Spot URL:", base_url)
             super().__init__(
-                api_key=Kiss.API_KEY_TEST,
-                api_secret=Kiss.API_SECRET_KEY_TEST,
-                base_url=Kiss.BASE_URL_TEST
+                api_key=api_key,
+                api_secret=api_secret,
+                base_url=base_url
+            )
+        elif force_url:
+            print("Spot URL:", base_url)
+            super().__init__(
+                api_key=api_key,
+                api_secret=api_secret,
+                base_url=base_url
             )
         else:
-            if force_url:
-                print("Spot URL:", Kiss.BASE_URL_REAL)
-                super().__init__(
-                    api_key=Kiss.API_KEY_REAL,
-                    api_secret=Kiss.API_SECRET_KEY_REAL,
-                    base_url=Kiss.BASE_URL_REAL
-                )
-            else:
-                print("Spot URL:", 'Default URL')
-                super().__init__(
-                    api_key=Kiss.API_KEY_REAL,
-                    api_secret=Kiss.API_SECRET_KEY_REAL
-                )
+            print("Spot URL:", 'Default URL')
+            super().__init__(
+                api_key=api_key,
+                api_secret=api_secret
+            )
 
         self.listen_key = self.new_listen_key().get('listenKey')
 
@@ -117,20 +121,20 @@ class SpotClient(Spot):
         second_symbol_locked_value, first_symbol_locked_value = 0, 0
         for item in balance:
             if item['asset'] == self.first_symbol:
-                first_symbol_free_value = str((Decimal(item['free']) * Decimal(symbol_bid_price)).quantize(
-                    Decimal('0.00000000'),
-                    rounding=ROUND_HALF_UP)
-                )
-                first_symbol_locked_value = str((Decimal(item['locked']) * Decimal(symbol_bid_price)).quantize(
-                    Decimal('0.00000000'),
-                    rounding=ROUND_HALF_UP)
-                )
+                first_symbol_free_value = str(Decimal(item['free']))
+                first_symbol_locked_value = str(Decimal(item['locked']))
             if item['asset'] == self.second_symbol:
                 second_symbol_free_value = item['free']
                 second_symbol_locked_value = item['locked']
 
-        free = str(Decimal(first_symbol_free_value) + Decimal(second_symbol_free_value))
-        locked = str(Decimal(first_symbol_locked_value) + Decimal(second_symbol_locked_value))
+        free = str((Decimal(first_symbol_free_value) * Decimal(symbol_bid_price)).quantize(
+                    Decimal('0.00000000'),
+                    rounding=ROUND_HALF_UP
+                ) + Decimal(second_symbol_free_value))
+        locked = str((Decimal(first_symbol_locked_value) * Decimal(symbol_bid_price)).quantize(
+                    Decimal('0.00000000'),
+                    rounding=ROUND_HALF_UP
+                ) + Decimal(second_symbol_locked_value))
 
         # saving the result data
         self.current_state_data = {
@@ -181,7 +185,7 @@ class SpotClient(Spot):
                  f"\n{wallet}"
         print(output)
 
-    def get_orders_to_db(self, get_limit=100, orders_to_sort=None):
+    def get_orders_to_db(self, get_limit=200, orders_to_sort=None):
         """
         :param self: Spot
         :param get_limit: int           | 200
@@ -223,7 +227,7 @@ class SpotClient(Spot):
             return sorted_orders_list
 
     def cancel_all_new_orders(self):
-        orders = self.get_orders(symbol=self.symbol, limit=100)
+        orders = self.get_orders(symbol=self.symbol, limit=200)
         if len(orders) > 0:
             for order in orders:
                 try:
@@ -232,3 +236,56 @@ class SpotClient(Spot):
                 except Exception as _ex:
                     print(_ex)
 
+
+if __name__ == '__main__':
+    spot_client = SpotClient(
+        first_symbol='DASH'
+        # first_symbol='BTC'
+        # first_symbol='JOE'
+    )
+
+    _id = 5
+
+    if _id == 1:
+        spot_client.new_order(
+            symbol=spot_client.symbol,
+            quantity=0.00108,
+            side='BUY',
+            type="LIMIT",
+            price=spot_client.depth_limit(14),
+            timeInForce="GTC"
+        )
+    elif _id == 2:
+        spot_client.cancel_order(
+            symbol=spot_client.symbol,
+            orderId=20743405370
+        )
+    elif _id == 3:
+        spot_client.cancel_all_new_orders()
+    elif _id == 4:
+        orders = spot_client.get_orders_to_db()
+
+        columns = ['symbol', 'orderId', 'price', 'origQty', 'cost', 'side', 'status']
+
+        if len(orders) > 0:
+            orders_df = pd.DataFrame(
+                orders,
+                columns=columns
+            )
+            orders_df = orders_df.sort_values(['price'], ascending=True).reset_index(drop=True)
+
+            print(f'\n---- Orders ------------------------------'
+                  f'\n{orders_df}')
+    elif _id == 5:
+        spot_client.get_current_state()
+        spot_client.str_current_state()
+    elif _id == 6:
+        spot_client.get_exchange_info()
+
+        print('minNotional:', spot_client.minNotional)
+        print('minPrice:', spot_client.minPrice)
+        print('maxPrice:', spot_client.maxPrice)
+        print('tickSize:', spot_client.tickSize)
+        print('minQty:', spot_client.minQty)
+        print('maxQty:', spot_client.maxQty)
+        print('stepSize:', spot_client.stepSize)
