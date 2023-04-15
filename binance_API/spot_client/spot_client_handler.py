@@ -239,30 +239,53 @@ class SpotClient(Spot):
 
 if __name__ == '__main__':
     spot_client = SpotClient(
-        first_symbol='DASH'
-        # first_symbol='BTC'
+        # first_symbol='DASH'
+        first_symbol='BTC'
         # first_symbol='JOE'
     )
 
-    _id = 5
+    _id = 6
 
     if _id == 1:
-        spot_client.new_order(
+        r = spot_client.new_order(
             symbol=spot_client.symbol,
             quantity=0.00108,
             side='BUY',
             type="LIMIT",
-            price=spot_client.depth_limit(14),
+            price=spot_client.depth_limit(26),
             timeInForce="GTC"
         )
+        print(r)
+        buy_order_to_db = {
+            "symbol": str(r['symbol']),
+            "price": str(r['price']),
+            "origQty": str(r['origQty']),
+            "cost": str((Decimal(r['origQty']) * Decimal(r['price'])).quantize(
+                Decimal('0.000000'), rounding=ROUND_HALF_UP
+            )),
+            "side": str(r['side']),
+            "type": str(r['type']),
+            "timeInForce": str(r['timeInForce']),
+            "workingTime": str(r['workingTime'])
+        }
+
+        orders_df = pd.DataFrame(
+            [buy_order_to_db],
+            columns=['symbol', 'orderId', 'price', 'origQty', 'cost', 'side', 'status']
+        )
+
+        print(f'\n{orders_df}')
+
     elif _id == 2:
-        spot_client.cancel_order(
+        r = spot_client.cancel_order(
             symbol=spot_client.symbol,
             orderId=20743405370
         )
+        print(r)
     elif _id == 3:
         spot_client.cancel_all_new_orders()
     elif _id == 4:
+        pd.set_option('display.max_columns', None)
         orders = spot_client.get_orders_to_db()
 
         columns = ['symbol', 'orderId', 'price', 'origQty', 'cost', 'side', 'status']

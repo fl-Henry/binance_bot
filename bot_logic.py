@@ -6,7 +6,7 @@ from random import randint
 from time import sleep
 import pandas as pd
 
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, ROUND_HALF_UP, ROUND_UP
 from binance_API.spot_client.spot_client_handler import SpotClient
 from binance_API.websocket.websocket_handler import WebsocketClient
 from sqlite3_handler.db_handler import SQLiteHandler
@@ -16,8 +16,10 @@ from print_tags import Tags
 spot_client: SpotClient
 sqlh: SQLiteHandler
 
-cost_limit = 60
+cost_limit = 160
 profit_percent = 0.3
+buy_div = 0.2
+loop_waiting = (5 * 60) + 0
 
 
 def create_buy_order():
@@ -204,8 +206,8 @@ def new_order_from_pending_db(pending_orders):
 def trade_process():
     """
     """
-    buy_profit_percent = 1 - (profit_percent * 3 / 5) / 100
-    sell_profit_percent = 1 + (profit_percent * 2 / 5) / 100
+    buy_profit_percent = 1 - (profit_percent * buy_div) / 100
+    sell_profit_percent = 1 + (profit_percent * (1 - buy_div)) / 100
 
     buy_price = Decimal(
         Decimal(spot_client.current_state_data['order_book_bid_current_price']) *
@@ -223,7 +225,8 @@ def trade_process():
 
     quantity = (
             Decimal(purchase_cost) / Decimal(spot_client.current_state_data['order_book_bid_current_price'])
-    ) // Decimal(spot_client.filters['LOT_SIZE_stepSize']) * Decimal(spot_client.filters['LOT_SIZE_stepSize'])
+    ) // Decimal(spot_client.filters['LOT_SIZE_stepSize']) * Decimal(spot_client.filters['LOT_SIZE_stepSize']
+    ) + Decimal(spot_client.filters['LOT_SIZE_stepSize'])
 
     buy_cost = (
             Decimal(buy_price) * Decimal(quantity)
@@ -421,8 +424,9 @@ def start_bot_logic():
                                f'{str(datetime.utcfromtimestamp(int(time.time()))):<20}' \
                                f' ----'
                 print(f'\n{Tags.LightBlue}{resp_type_pr}{Tags.ResetAll}')
-                print('Waiting 180 sec')
-                sleep(180)
+
+                print(f'Waiting {loop_waiting} sec')
+                sleep(loop_waiting)
                 while_counter = 0
                 while while_counter < 6:
                     try:
@@ -477,8 +481,16 @@ def start_bot_logic():
         try:
             web_socket.stream_user_data()
 
+            renew_listen_key_counter = 0
             while True:
-                sleep(60)
+
+                if renew_listen_key_counter >= 15:
+                    spot_client.renew_listen_key(spot_client.listen_key)
+                    renew_listen_key_counter = 0
+                    print("listen_key is updated:", repr(spot_client.listen_key))
+
+                sleep(loop_waiting)
+                renew_listen_key_counter += 1
 
         except KeyboardInterrupt:
             ...

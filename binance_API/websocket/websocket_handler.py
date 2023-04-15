@@ -358,6 +358,9 @@ class WebsocketClient(SpotWebsocketClient):
         else:
             print(repr(response))
 
+    def _trades(self, response):
+        print(response)
+
     def stream_book_ticker(self):
 
         self.book_ticker(
@@ -400,3 +403,9 @@ class WebsocketClient(SpotWebsocketClient):
         else:
             raise KeyError('listen_key is None')
 
+    def stream_trades(self):
+        self.trade(
+            symbol=self.symbol,
+            id=5,
+            callback=self._trades
+        )
