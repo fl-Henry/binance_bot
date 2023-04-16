@@ -1,14 +1,27 @@
 import sqlite3
 import argparse
-from datetime import datetime
+import datetime
+# from datetime import datetime
 from decimal import Decimal, getcontext, ROUND_CEILING, ROUND_UP, ROUND_HALF_UP, ROUND_HALF_EVEN, ROUND_HALF_DOWN
 import time
 
+# print(1_000_000)
+
+first_state = 1680873169207
 print(int(time.time()*1000 // 1))
-print(datetime.utcfromtimestamp(int(time.time())))
-print(datetime.utcfromtimestamp(1680748199149/1000))
-print('1564034571105')
-print('1680625921677')
+print(datetime.datetime.utcfromtimestamp(int(time.time())))
+print(datetime.datetime.utcfromtimestamp(first_state/1000))
+print(datetime.timedelta(days=1))
+secs = datetime.timedelta(days=1).total_seconds()
+print("secs:", secs)
+delta = datetime.datetime.utcfromtimestamp(first_state/1000) - datetime.timedelta(1)
+print('delta:', delta)
+print(type(delta))
+res_state = first_state - secs * 1000
+print(datetime.datetime.utcfromtimestamp(res_state/1000))
+
+# print('1564034571105')
+# print('1680625921677')
 
 # set_data_dict = {
 #         'balance_first_symbol': 'BTC',

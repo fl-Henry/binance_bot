@@ -1,8 +1,9 @@
-import pandas as pd
 import time
+import pandas as pd
 
-from binance.spot import Spot
 from decimal import Decimal, ROUND_HALF_UP
+from binance.spot import Spot
+from datetime import datetime, timedelta
 
 try:
     from .. import Kiss
@@ -34,6 +35,8 @@ class SpotClient(Spot):
         self.first_symbol = first_symbol
         self.second_symbol = second_symbol
         self.symbol = f"{self.first_symbol}{self.second_symbol}"
+        self.test_key = test_key
+        self.last_kline = None
 
         api_key, api_secret, base_url, stream_url = Kiss.get_api_credentials(test_key, low_permissions)
 
@@ -60,27 +63,266 @@ class SpotClient(Spot):
 
         self.listen_key = self.new_listen_key().get('listenKey')
 
+    def get_kline(self, interval='1d', limit=1, start_time=None, end_time=None, if_sum=False, output_key=False):
+        """"""
+        """
+            [                                                          [
+              [                                                          [
+                1499040000000,      // Kline open time                     1681603200000,
+                "0.01634790",       // Open price                          "30295.08000000",
+                "0.80000000",       // High price                          "30319.04000000",
+                "0.01575800",       // Low price                           "30064.73000000",
+                "0.01577100",       // Close price                         "30249.35000000",
+                "148976.11427815",  // Volume                              "353.08085300",
+                1499644799999,      // Kline Close time                    1681689599999,
+                "2434.19055334",    // Quote asset volume                  "10681639.59001725",
+                308,                // Number of trades                    10768,
+                "1756.87402397",    // Taker buy base asset volume         "201.13368700",
+                "28.46694368",      // Taker buy quote asset volume        "6084200.47457115",
+                "0"                 // Unused field, ignore.               "0"
+              ]                                                          ]
+            ]                                                          ]
+            
+            
+        """
+        if start_time is not None:
+            response = self.klines(
+                symbol=self.symbol,
+                interval=interval,
+                limit=limit,
+                startTime=start_time
+            )
+        elif end_time is not None:
+            response = self.klines(
+                symbol=self.symbol,
+                interval=interval,
+                limit=limit,
+                endTime=end_time
+            )
+        else:
+            response = self.klines(
+                symbol=self.symbol,
+                interval=interval,
+                limit=limit
+            )
+
+        if limit > 1:
+            response_list = []
+            response_data = {
+                "symbol": self.symbol,
+                "start_time": response[0][0],
+                "start_time_utc": str(datetime.utcfromtimestamp(int(int(response[0][0])) // 1000)),
+                "close_time": response[-1][6],
+                "close_time_utc": str(datetime.utcfromtimestamp(int(int(response[-1][6])) // 1000)),
+                "interval": interval,
+                "open_price": response[0][1],
+                "close_price": response[-1][4],
+                "high_price": response[0][2],
+                "low_price": response[0][3],
+                "number_of_trades": '0',
+                "all_origQty": '0',
+                "all_cost": '0',
+                "buy_origQty": '0',
+                "buy_cost": '0',
+                "sell_origQty": '0',
+                "sell_cost": '0',
+            }
+            for response_item in response:
+                item = {
+                    "symbol": self.symbol,
+                    "start_time": response_item[0],
+                    "start_time_utc": str(datetime.utcfromtimestamp(int(int(response_item[0])) // 1000)),
+                    "close_time": response_item[6],
+                    "close_time_utc": str(datetime.utcfromtimestamp(int(int(response_item[6])) // 1000)),
+                    "interval": interval,
+                    "open_price": response_item[1],
+                    "close_price": response_item[4],
+                    "high_price": response_item[2],
+                    "low_price": response_item[3],
+                    "number_of_trades": response_item[8],
+                    "all_origQty": response_item[5],
+                    "all_cost": response_item[7],
+                    "buy_origQty": response_item[9],
+                    "buy_cost": response_item[10],
+                    "sell_origQty": (Decimal(str(response_item[5])) - Decimal(str(response_item[9]))).quantize(
+                        Decimal('0.00000000'),
+                        rounding=ROUND_HALF_UP
+                    ),
+                    "sell_cost": (Decimal(str(response_item[7])) - Decimal(str(response_item[10]))).quantize(
+                        Decimal('0.00000000'),
+                        rounding=ROUND_HALF_UP
+                    ),
+                }
+                response_list.append(item)
+
+                if Decimal(item['high_price']) > Decimal(response_data['high_price']):
+                    response_data.update({"high_price": item['high_price']})
+
+                if Decimal(item['low_price']) < Decimal(response_data['low_price']):
+                    response_data.update({"low_price": item['low_price']})
+
+                response_data.update(
+                    {
+                        "number_of_trades": int(response_data['number_of_trades']) + int(item['number_of_trades'])
+                    }
+                )
+
+                response_data.update(
+                    {
+                        "all_origQty": (Decimal(str(response_data['all_origQty'])) +
+                                        Decimal(str(item['all_origQty']))).quantize(
+                            Decimal('0.00000000'),
+                            rounding=ROUND_HALF_UP
+                        ),
+                    }
+                )
+
+                response_data.update(
+                    {
+                        "all_cost": (Decimal(str(response_data['all_cost'])) +
+                                     Decimal(str(item['all_cost']))).quantize(
+                            Decimal('0.00000000'),
+                            rounding=ROUND_HALF_UP
+                        ),
+                    }
+                )
+
+                response_data.update(
+                    {
+                        "buy_origQty": (Decimal(str(response_data['buy_origQty'])) +
+                                        Decimal(str(item['buy_origQty']))).quantize(
+                            Decimal('0.00000000'),
+                            rounding=ROUND_HALF_UP
+                        ),
+                    }
+                )
+
+                response_data.update(
+                    {
+                        "buy_cost": (Decimal(str(response_data['buy_cost'])) +
+                                     Decimal(str(item['buy_cost']))).quantize(
+                            Decimal('0.00000000'),
+                            rounding=ROUND_HALF_UP
+                        ),
+                    }
+                )
+
+                response_data.update(
+                    {
+                        "sell_origQty": (Decimal(str(response_data['sell_origQty'])) +
+                                         Decimal(str(item['sell_origQty']))).quantize(
+                            Decimal('0.00000000'),
+                            rounding=ROUND_HALF_UP
+                        ),
+                    }
+                )
+
+                response_data.update(
+                    {
+                        "sell_cost": (Decimal(str(response_data['sell_cost'])) +
+                                      Decimal(str(item['sell_cost']))).quantize(
+                            Decimal('0.00000000'),
+                            rounding=ROUND_HALF_UP
+                        ),
+                    }
+                )
+
+            if if_sum:
+                result = response_data
+            else:
+                result = response_list
+
+        else:
+            response_data = {
+                "symbol": self.symbol,
+                "start_time": response[0][0],
+                "start_time_utc": str(datetime.utcfromtimestamp(int(int(response[0][0])) // 1000)),
+                "close_time": response[0][6],
+                "close_time_utc": str(datetime.utcfromtimestamp(int(int(response[0][6])) // 1000)),
+                "interval": interval,
+                "open_price": response[0][1],
+                "close_price": response[0][4],
+                "high_price": response[0][2],
+                "low_price": response[0][3],
+                "number_of_trades": response[0][8],
+                "all_origQty": response[0][5],
+                "all_cost": response[0][7],
+                "buy_origQty": response[0][9],
+                "buy_cost": response[0][10],
+                "sell_origQty": (Decimal(str(response[0][5])) - Decimal(str(response[0][9]))).quantize(
+                    Decimal('0.00000000'),
+                    rounding=ROUND_HALF_UP
+                ),
+                "sell_cost": (Decimal(str(response[0][7])) - Decimal(str(response[0][10]))).quantize(
+                    Decimal('0.00000000'),
+                    rounding=ROUND_HALF_UP
+                ),
+            }
+
+            result = response_data
+
+        if output_key:
+            output = f"[{response_data['symbol']}] " \
+                     f"Start: {response_data['start_time_utc']:>20} | Close: {response_data['close_time_utc']:>20}" \
+                     f"\nALL : " \
+                     f"Cost: {response_data['all_cost']:>20} | " \
+                     f"Qty: {response_data['all_origQty']:>20}" \
+                     f"\nBUY : " \
+                     f"Cost: {response_data['buy_cost']:>20} | " \
+                     f"Qty: {response_data['buy_origQty']:>20}" \
+                     f"\nSELL: " \
+                     f"Cost: {response_data['sell_cost']:>20} | " \
+                     f"Qty: {response_data['sell_origQty']:>20}"
+
+            if response_data['close_price'] >= response_data["open_price"]:
+                output += f"\n-- {response_data['high_price']} --:: {response_data['close_price']} ::" \
+                          f":: {response_data['open_price']} ::-- {response_data['low_price']} --"
+            else:
+                output += f"\n-- {response_data['high_price']} --:: {response_data['open_price']} ::" \
+                          f":: {response_data['close_price']} ::-- {response_data['low_price']} --"
+
+            resp_type_pr = f'---- Kline --------- For Day ----------------- ' \
+                           f'{str(datetime.utcnow()):<20}' \
+                           f' ----'
+
+            print(f'\n{resp_type_pr}')
+            print(output)
+
+        self.last_kline = result
+        return result
+
     def get_exchange_info(self):
         """
         """
         symbol_exchange_info = self.exchange_info(symbol=self.symbol)
 
-        self.filters = {
-            "serverTime": symbol_exchange_info['serverTime'],
-            "symbol": symbol_exchange_info['symbols'][0]['symbol'],
-            'PRICE_FILTER_filterType': symbol_exchange_info['symbols'][0]['filters'][0]["filterType"],
-            'PRICE_FILTER_minPrice': symbol_exchange_info['symbols'][0]['filters'][0]["minPrice"],
-            'PRICE_FILTER_maxPrice': symbol_exchange_info['symbols'][0]['filters'][0]["maxPrice"],
-            'PRICE_FILTER_tickSize': symbol_exchange_info['symbols'][0]['filters'][0]["tickSize"],
-            'LOT_SIZE_filterType': symbol_exchange_info['symbols'][0]['filters'][1]["filterType"],
-            'LOT_SIZE_minQty': symbol_exchange_info['symbols'][0]['filters'][1]["minQty"],
-            'LOT_SIZE_maxQty': symbol_exchange_info['symbols'][0]['filters'][1]["maxQty"],
-            'LOT_SIZE_stepSize': symbol_exchange_info['symbols'][0]['filters'][1]["stepSize"],
-            'MIN_NOTIONAL_filterType': symbol_exchange_info['symbols'][0]['filters'][2]["filterType"],
-            'MIN_NOTIONAL_minNotional': symbol_exchange_info['symbols'][0]['filters'][2]["minNotional"],
-            'MIN_NOTIONAL_applyToMarket': symbol_exchange_info['symbols'][0]['filters'][2]["applyToMarket"],
-            'MIN_NOTIONAL_avgPriceMins': symbol_exchange_info['symbols'][0]['filters'][2]["avgPriceMins"],
-        }
+        try:
+            if self.test_key:
+                symbol_exchange_info['symbols'][0]['filters'][2]["filterType"] = 'MIN_NOTIONAL'
+                symbol_exchange_info['symbols'][0]['filters'][2]["minNotional"] = '10.00000000'
+                symbol_exchange_info['symbols'][0]['filters'][2]["applyToMarket"] = '1'
+                symbol_exchange_info['symbols'][0]['filters'][2]["avgPriceMins"] = '5'
+
+            self.filters = {
+                "serverTime": symbol_exchange_info['serverTime'],
+                "symbol": symbol_exchange_info['symbols'][0]['symbol'],
+                'PRICE_FILTER_filterType': symbol_exchange_info['symbols'][0]['filters'][0]["filterType"],
+                'PRICE_FILTER_minPrice': symbol_exchange_info['symbols'][0]['filters'][0]["minPrice"],
+                'PRICE_FILTER_maxPrice': symbol_exchange_info['symbols'][0]['filters'][0]["maxPrice"],
+                'PRICE_FILTER_tickSize': symbol_exchange_info['symbols'][0]['filters'][0]["tickSize"],
+                'LOT_SIZE_filterType': symbol_exchange_info['symbols'][0]['filters'][1]["filterType"],
+                'LOT_SIZE_minQty': symbol_exchange_info['symbols'][0]['filters'][1]["minQty"],
+                'LOT_SIZE_maxQty': symbol_exchange_info['symbols'][0]['filters'][1]["maxQty"],
+                'LOT_SIZE_stepSize': symbol_exchange_info['symbols'][0]['filters'][1]["stepSize"],
+                'MIN_NOTIONAL_filterType': symbol_exchange_info['symbols'][0]['filters'][2]["filterType"],
+                'MIN_NOTIONAL_minNotional': symbol_exchange_info['symbols'][0]['filters'][2]["minNotional"],
+                'MIN_NOTIONAL_applyToMarket': symbol_exchange_info['symbols'][0]['filters'][2]["applyToMarket"],
+                'MIN_NOTIONAL_avgPriceMins': symbol_exchange_info['symbols'][0]['filters'][2]["avgPriceMins"],
+            }
+        except Exception as _ex:
+            print(_ex)
+            print(f"symbol_exchange_info: {symbol_exchange_info}")
+            raise _ex
 
         self.minNotional = Decimal(str(float(self.filters['MIN_NOTIONAL_minNotional'])))
         self.minPrice = Decimal(str(float(self.filters['PRICE_FILTER_minPrice'])))
@@ -239,12 +481,11 @@ class SpotClient(Spot):
 
 if __name__ == '__main__':
     spot_client = SpotClient(
-        # first_symbol='DASH'
-        first_symbol='BTC'
-        # first_symbol='JOE'
+        first_symbol='JOE',
+        # test_key=True
     )
 
-    _id = 6
+    _id = 7
 
     if _id == 1:
         r = spot_client.new_order(
@@ -312,3 +553,14 @@ if __name__ == '__main__':
         print('minQty:', spot_client.minQty)
         print('maxQty:', spot_client.maxQty)
         print('stepSize:', spot_client.stepSize)
+    elif _id == 7:
+
+        # now = int(time.time() // 1)
+        # delta_sec = timedelta(days=1).total_seconds()
+        # start_time = int((now - delta_sec) * 1000)
+        # now = int(now * 1000)
+        # print(now)
+        # print(datetime.utcfromtimestamp(start_time / 1000))
+        # print(start_time)
+        r = spot_client.get_kline(interval='1h', limit=24, output_key=True)
+        # print(r)

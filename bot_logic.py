@@ -1,12 +1,14 @@
 import os
-import argparse
+import sys
 import time
-from datetime import datetime
-from random import randint
-from time import sleep
+import argparse
 import pandas as pd
 
 from decimal import Decimal, ROUND_HALF_UP, ROUND_UP
+from datetime import datetime
+from random import randint
+from time import sleep
+
 from binance_API.spot_client.spot_client_handler import SpotClient
 from binance_API.websocket.websocket_handler import WebsocketClient
 from sqlite3_handler.db_handler import SQLiteHandler
@@ -14,11 +16,12 @@ from sqlite3_handler import tables
 from print_tags import Tags
 
 spot_client: SpotClient
+web_socket: WebsocketClient
 sqlh: SQLiteHandler
 
-cost_limit = 160
+buy_div = 0.2  # sell_div = 1 - buy_div
 profit_percent = 0.3
-buy_div = 0.2
+cost_limit = 160
 loop_waiting = (5 * 60) + 0
 
 
@@ -203,11 +206,20 @@ def new_order_from_pending_db(pending_orders):
         create_buy_order_from_dict(buy_orders[buy_orders_df['index'][0]])
 
 
-def trade_process():
+def trade_process(custom_buy_div=None):
     """
+        :param custom_buy_div: float
+        0.5 > $more ----s==|==b---- $less ; stable
+        0.75 >      -----s=|===b---       ; down
+        0.25 >      ---s===|=b-----       ; up
+        "--s==|==b--" - offset of buy price
     """
-    buy_profit_percent = 1 - (profit_percent * buy_div) / 100
-    sell_profit_percent = 1 + (profit_percent * (1 - buy_div)) / 100
+    if custom_buy_div is None:
+        buy_profit_percent = 1 - (profit_percent * buy_div) / 100
+        sell_profit_percent = 1 + (profit_percent * (1 - buy_div)) / 100
+    else:
+        buy_profit_percent = 1 - (profit_percent * custom_buy_div) / 100
+        sell_profit_percent = 1 + (profit_percent * (1 - custom_buy_div)) / 100
 
     buy_price = Decimal(
         Decimal(spot_client.current_state_data['order_book_bid_current_price']) *
@@ -282,12 +294,6 @@ def trade_process():
 def if_buy():
     """
     """
-    # TODO: table "pending orders" > order pairs > when callback with execution report - check table "pending orders"
-    # if pending match orders quantity and price then append orderId and update status
-    # when both of orders are filled > OK
-
-    # TODO: when the balance is not enough to sell then create only buy order and make sell order still pending
-
     orders_in_process = get_orders_in_process_from_db()
 
     sorted_df_from_lost_of_orders(
@@ -298,8 +304,6 @@ def if_buy():
         ascending=True,
         reset_index=True
     )
-    # print("if_buy")
-    # sleep(60)
 
     if len(orders_in_process['orders_pending']) > 0:
         new_order_from_pending_db(orders_in_process['orders_pending'])
@@ -314,18 +318,47 @@ def if_buy():
         print('Skip')
 
 
-def start_bot_logic():
+def if_buy_kline():
     """
-    # TODO: start websocket user_agent
+    """
+    orders_in_process = get_orders_in_process_from_db()
 
-    # TODO: if_buy
-    # TODO: schedule of orders
+    sorted_df_from_lost_of_orders(
+        orders_in_process['orders_new'],
+        header='--- New orders ---------------------------',
+        key_to_print=True,
+        sort_col='price',
+        ascending=True,
+        reset_index=True
+    )
 
-    logger: errors
-            current state
-            pair of orders
-            executionReport
+    print(f"average volume x2:   {str(float(spot_client.last_kline['all_cost']) / 48):>24}")
+    print(f"all volume:          {str(web_socket.kline_data['all_cost']):>24}")
+    print(f"buy volume:          {str(web_socket.kline_data['buy_cost']):>24}")
+    print(f"sell volume:         {str(web_socket.kline_data['sell_cost']):>24}")
 
+    if (float(web_socket.kline_data['buy_cost']) > float(spot_client.last_kline["all_cost"]) / 48) and (
+        float(web_socket.kline_data['buy_cost']) > float(web_socket.kline_data["all_cost"]) * 0.7
+    ):
+        print("UP > custom_buy_div=0.2")
+        trade_process(custom_buy_div=0.2)
+
+    elif (float(web_socket.kline_data['sell_cost']) > float(spot_client.last_kline["all_cost"]) / 48) and (
+        float(web_socket.kline_data['sell_cost']) > float(web_socket.kline_data["all_cost"]) * 0.7
+    ):
+        print("DOWN > custom_buy_div=0.8")
+        trade_process(custom_buy_div=0.8)
+
+
+def start_bot_logic():
+    """TODO cancel all orders with db updating"""
+    """
+        id_arg = 1 > web_socket.stream_ticker() > TODO ERROR
+        id_arg = 2 > web_socket.stream_kline() based
+        id_arg = 3 > web_socket.stream_user_data()
+        id_arg = 4 > web_socket.stream_execution_reports() based
+        id_arg = 5 > web_socket.stream_trades()
+        id_arg = 6 > web_socket.stream_agg_trades()
     """
 
     parser = argparse.ArgumentParser(description='Binance app')
@@ -333,8 +366,8 @@ def start_bot_logic():
                         help='Symbol of token to buy Ex: "BTC"')
     parser.add_argument('--second-symbol', dest='second_symbol', default='USDT',
                         help='Symbol of token as money Ex: "USDT"')
-    parser.add_argument('--id', dest='id', default=4,
-                        help='Id of callback Ex: 4')
+    parser.add_argument('--id', dest='id', default=5,
+                        help='Id of callback Ex: 5')
     parser.add_argument('--test', dest='test_key', nargs='?', const=True, default=False,
                         help='Enable test mode')
     parser.add_argument('--force-url', dest='force_url', nargs='?', const=True, default=False,
@@ -347,6 +380,8 @@ def start_bot_logic():
     test_key = args.test_key
     force_url = args.force_url
 
+    base_path = str(__file__)[:len(__file__) - len(os.path.basename(str(__file__))) - 1]
+
     print(
         '\nfirst_symbol:', first_symbol,
         '\nsecond_symbol:', second_symbol,
@@ -355,9 +390,47 @@ def start_bot_logic():
         '\nforce_url:', force_url,
     )
 
-    global spot_client
+    if test_key:
+        db_name = f"test_{first_symbol}{second_symbol}"
+    else:
+        db_name = f"{first_symbol}{second_symbol}"
 
-    if id_arg == 4:
+    global spot_client
+    global web_socket
+    global sqlh
+
+    if id_arg == 1:
+        # TODO ???
+        print('[ERROR] TODO')
+        sys.exit(1)
+
+        # web_socket = WebsocketClient(
+        #     test_key=test_key,
+        #     force_url=force_url,
+        #     low_permissions=True,
+        #     first_symbol=first_symbol,
+        #     second_symbol=second_symbol
+        # )
+        #
+        # try:
+        #     web_socket.stream_trades()
+        #
+        #     while True:
+        #
+        #         sleep(loop_waiting)
+        #
+        # except KeyboardInterrupt:
+        #     ...
+        # finally:
+        #     web_socket.stop()
+        #     print(f'\n{Tags.LightYellow}WebSocket is stopped{Tags.ResetAll}')
+        #     print("Sleep 5 sec:")
+        #     for counter in range(1, 6):
+        #         print('Sleep progress: ', end='')
+        #         print("." * counter)
+        #         sleep(1)
+
+    elif id_arg == 2:
 
         spot_client = SpotClient(
             test_key=test_key,
@@ -369,23 +442,19 @@ def start_bot_logic():
         web_socket = WebsocketClient(
             test_key=test_key,
             force_url=force_url,
+            low_permissions=True,
+            listen_key=spot_client.listen_key,
             first_symbol=first_symbol,
-            second_symbol=second_symbol,
-            listen_key=spot_client.listen_key
+            second_symbol=second_symbol
         )
 
-        base_path = str(__file__)[:len(__file__) - len(os.path.basename(str(__file__))) - 1]
-        if test_key:
-            db_name = f"test_{first_symbol}{second_symbol}"
-        else:
-            db_name = f"{first_symbol}{second_symbol}"
-
-        global sqlh
         sqlh = SQLiteHandler(db_name=db_name, db_dir=base_path)
         sqlh.create_all_tables(tables.create_all_tables)
 
         try:
             web_socket.stream_execution_reports(db_name=db_name, db_dir=base_path)
+            web_socket.kline_output_key=False
+            web_socket.stream_kline()
 
             spot_client.get_current_state()
             spot_client.str_current_state()
@@ -395,38 +464,39 @@ def start_bot_logic():
             spot_client.get_exchange_info()
             if len(spot_client.filters) > 0:
                 sqlh.insert_from_dict('filters', spot_client.filters)
+            else:
+                print("[ERROR] Can't get filters")
+                sys.exit(1)
 
-            # print("DEBUG")
-            # spot_client.cancel_all_new_orders()
-            # sleep(30)
+            # Getting 24h kline
+            spot_client.get_kline(interval='1h', limit=24, output_key=True, if_sum=True)
 
             update_orders_db()
 
             renew_listen_key_counter = 0
             while True:
+
+                # Mode base logic
                 print(f'{Tags.BackgroundLightYellow}{Tags.Black}'
-                      f'\n      Scheduled if_buy'
+                      f'\n      Scheduled if_buy_kline'
                       f'{Tags.ResetAll}')
-                if_buy()
+                if_buy_kline()
 
-                # if (renew_listen_key_counter % 4) == 0:
-                #     print(f'{Tags.BackgroundLightRed}'
-                #           f'\n      Scheduled if_cancel\n'
-                #           f'{Tags.ResetAll}')
-                #     if_cancel(f'{symbol}USDT')
-
+                # Updating listen_key
                 if renew_listen_key_counter >= 15:
                     spot_client.renew_listen_key(spot_client.listen_key)
                     renew_listen_key_counter = 0
                     print("listen_key is updated:", repr(spot_client.listen_key))
 
+                # Printing header before sleeping
                 resp_type_pr = f'---- UTC time -------------------------------------- ' \
                                f'{str(datetime.utcfromtimestamp(int(time.time()))):<20}' \
                                f' ----'
                 print(f'\n{Tags.LightBlue}{resp_type_pr}{Tags.ResetAll}')
-
                 print(f'Waiting {loop_waiting} sec')
                 sleep(loop_waiting)
+
+                # Updating current_state
                 while_counter = 0
                 while while_counter < 6:
                     try:
@@ -451,8 +521,6 @@ def start_bot_logic():
         finally:
             web_socket.stop()
             print(f'\n{Tags.LightYellow}WebSocket is stopped{Tags.ResetAll}')
-            sqlh.close()
-            print(f'\n{Tags.LightYellow}SQL handler closed{Tags.ResetAll}')
             print("Sleep 5 sec:")
             for counter in range(1, 6):
                 print('Sleep progress: ', end='')
@@ -502,127 +570,170 @@ def start_bot_logic():
                 print('Sleep progress: ', end='')
                 print("." * counter)
                 sleep(1)
+
+    elif id_arg == 4:
+
+        spot_client = SpotClient(
+            test_key=test_key,
+            force_url=force_url,
+            first_symbol=first_symbol,
+            second_symbol=second_symbol
+        )
+
+        web_socket = WebsocketClient(
+            test_key=test_key,
+            force_url=force_url,
+            first_symbol=first_symbol,
+            second_symbol=second_symbol,
+            listen_key=spot_client.listen_key
+        )
+
+        sqlh = SQLiteHandler(db_name=db_name, db_dir=base_path)
+        sqlh.create_all_tables(tables.create_all_tables)
+
+        try:
+            web_socket.stream_execution_reports(db_name=db_name, db_dir=base_path)
+
+            spot_client.get_current_state()
+            spot_client.str_current_state()
+            if len(spot_client.current_state_data) > 0:
+                sqlh.insert_from_dict('current_state', spot_client.current_state_data)
+
+            spot_client.get_exchange_info()
+            if len(spot_client.filters) > 0:
+                sqlh.insert_from_dict('filters', spot_client.filters)
+            else:
+                print("[ERROR] Can't get filters")
+                sys.exit(1)
+
+            # print("DEBUG")
+            # spot_client.cancel_all_new_orders()
+            # print("CLOSED")
+            # sleep(30)
+
+            update_orders_db()
+
+            renew_listen_key_counter = 0
+            while True:
+
+                # Mode base logic
+                print(f'{Tags.BackgroundLightYellow}{Tags.Black}'
+                      f'\n      Scheduled if_buy'
+                      f'{Tags.ResetAll}')
+                if_buy()
+
+                # Updating listen_key
+                if renew_listen_key_counter >= 15:
+                    spot_client.renew_listen_key(spot_client.listen_key)
+                    renew_listen_key_counter = 0
+                    print("listen_key is updated:", repr(spot_client.listen_key))
+
+                # Printing header before sleeping
+                resp_type_pr = f'---- UTC time -------------------------------------- ' \
+                               f'{str(datetime.utcfromtimestamp(int(time.time()))):<20}' \
+                               f' ----'
+                print(f'\n{Tags.LightBlue}{resp_type_pr}{Tags.ResetAll}')
+                print(f'Waiting {loop_waiting} sec')
+                sleep(loop_waiting)
+
+                # Updating current_state
+                while_counter = 0
+                while while_counter < 6:
+                    try:
+                        spot_client.get_current_state()
+                        spot_client.str_current_state()
+                        if len(spot_client.current_state_data) > 0:
+                            sqlh.insert_from_dict('current_state', spot_client.current_state_data)
+
+                        update_orders_db()
+                        while_counter = 20
+
+                    except Exception as _ex:
+                        print("[ERROR] start_bot_logic > id_arg == 4 > ", _ex)
+                        while_counter += 1
+                        time.sleep(randint(1, 10))
+
+                renew_listen_key_counter += 1
+                print("renew_listen_key_counter: ", renew_listen_key_counter)
+
+        except KeyboardInterrupt:
+            ...
+        finally:
+            web_socket.stop()
+            print(f'\n{Tags.LightYellow}WebSocket is stopped{Tags.ResetAll}')
+            sqlh.close()
+            print(f'\n{Tags.LightYellow}SQL handler closed{Tags.ResetAll}')
+            print("Sleep 5 sec:")
+            for counter in range(1, 6):
+                print('Sleep progress: ', end='')
+                print("." * counter)
+                sleep(1)
+
+    elif id_arg == 5:
+
+        web_socket = WebsocketClient(
+            test_key=test_key,
+            force_url=force_url,
+            low_permissions=True,
+            first_symbol=first_symbol,
+            second_symbol=second_symbol
+        )
+
+        try:
+            web_socket.stream_trades()
+
+            while True:
+
+                sleep(loop_waiting)
+
+        except KeyboardInterrupt:
+            ...
+        finally:
+            web_socket.stop()
+            print(f'\n{Tags.LightYellow}WebSocket is stopped{Tags.ResetAll}')
+            print("Sleep 5 sec:")
+            for counter in range(1, 6):
+                print('Sleep progress: ', end='')
+                print("." * counter)
+                sleep(1)
+
+    elif id_arg == 6:
+
+        web_socket = WebsocketClient(
+            test_key=test_key,
+            force_url=force_url,
+            low_permissions=True,
+            first_symbol=first_symbol,
+            second_symbol=second_symbol
+        )
+
+        try:
+            web_socket.stream_agg_trades()
+
+            while True:
+                sleep(5)
+                print()
+
+        except KeyboardInterrupt:
+            ...
+        finally:
+            web_socket.stop()
+            print(f'\n{Tags.LightYellow}WebSocket is stopped{Tags.ResetAll}')
+            print("Sleep 5 sec:")
+            for counter in range(1, 6):
+                print('Sleep progress: ', end='')
+                print("." * counter)
+                sleep(1)
+
     else:
-        print("[ERROR] start_bot_logic > id_arg is out of range | expected 3 or 4")
+        print("[ERROR] start_bot_logic > id_arg is out of range | expected 2 or 6")
+        print("id_arg = 1 > web_socket.stream_ticker() > [ERROR] TODO")
+        print("id_arg = 2 > web_socket.stream_kline()")
         print("id_arg = 3 > web_socket.stream_user_data()")
         print("id_arg = 4 > web_socket.stream_execution_reports()")
+        print("id_arg = 5 > web_socket.stream_trades()")
+        print("id_arg = 6 > web_socket.stream_agg_trades()")
 
 
 if __name__ == '__main__':
     start_bot_logic()
-
-
-#
-# def rebuild_orders(orders_df, side):
-#     """
-#     :param orders_df: pd.DataFrame
-#     :param side: str        | 'SELL', 'BUY'
-#     :return: json           | json to overwrite log
-#     """
-#     print('\norders_df\n', orders_df)
-#     sort_limit = limit_orders_amount + 10
-#
-#     for order_counter in range(orders_df.__len__()):
-#         if (str(orders_df['orderId'][order_counter]) in ['NaN', 'nan']) and (order_counter < sort_limit):
-#             if side == 'SELL':
-#                 try:
-#                     spot_requests.sell_order(
-#                         client=spot_client,
-#                         quantity=float(orders_df['origQty'][order_counter]),
-#                         symbol=str(orders_df['symbol'][order_counter]),
-#                         price=float(orders_df['price'][order_counter])
-#                     )
-#                     orders_df[order_counter]['orderId'] = 'opened'
-#                 except Exception as _ex:
-#                     print(_ex)
-#
-#             elif side == 'BUY':
-#                 try:
-#                     spot_requests.buy_order(
-#                         client=spot_client,
-#                         quantity=float(orders_df['origQty'][order_counter]),
-#                         symbol=str(orders_df['symbol'][order_counter]),
-#                         price=float(orders_df['price'][order_counter])
-#                     )
-#                     orders_df[order_counter]['orderId'] = 'opened'
-#                 except Exception as _ex:
-#                     print(_ex)
-#             else:
-#                 raise KeyError
-#
-#         elif (str(orders_df['orderId'][order_counter]) not in ['NaN', 'nan']) and \
-#                 (order_counter >= sort_limit):
-#             spot_requests.cancel_order(
-#                 client=spot_client,
-#                 symbol=str(orders_df['symbol'][order_counter]),
-#                 order_id=int(orders_df['orderId'][order_counter])
-#             )
-#             orders_df[order_counter]['orderId'] = 'closed'
-#
-#     print('\norders_df after operations\n', orders_df)
-#
-#     for order_counter in range(orders_df.__len__()):
-#         if (str(orders_df['orderId'][order_counter]) not in ['NaN', 'nan', 'closed']) and (order_counter < sort_limit):
-#             print('droped')
-#             orders_df.drop(order_counter)
-#
-#     # if orders_df.__len__() > sort_limit:
-#     #     orders_df = orders_df.drop([*range(sort_limit)])
-#     # else:
-#     #     orders_df = orders_df.drop([*range(orders_df.__len__())])
-#
-#     for column_name in orders_df.columns.values.tolist():
-#         if column_name not in ['price', 'origQty', 'symbol']:
-#             orders_df = orders_df.drop(columns=column_name)
-#
-#     print(f'{Tags.BackgroundMagenta}\nLast orders{Tags.ResetAll}\n', orders_df)
-#     orders_df_json = json.loads(orders_df.to_json(orient="records"))
-#
-#     return orders_df_json
-#
-#
-# def if_cancel(symbol):
-#     """
-#     :param symbol: str      | 'BTCUSDT'
-#     """
-#     current_orders_update(symbol)
-#
-#     buy_failed_orders = state_history.read_cannot_buy()
-#     buy_failed_orders = pd.json_normalize(buy_failed_orders)
-#
-#     sell_failed_orders = state_history.read_cannot_sell()
-#     sell_failed_orders = pd.json_normalize(sell_failed_orders)
-#
-#     current_orders_df = pd.json_normalize(current_orders)
-#     if current_orders_df.__len__() > 0:
-#         current_sell_orders_df = current_orders_df[current_orders_df['side'] == 'SELL']
-#         current_buy_orders_df = current_orders_df[current_orders_df['side'] == 'BUY']
-#     else:
-#         current_sell_orders_df = current_orders_df
-#         current_buy_orders_df = current_orders_df
-#
-#     sell_orders_df = pd.concat([sell_failed_orders, current_sell_orders_df])
-#     buy_orders_df = pd.concat([buy_failed_orders, current_buy_orders_df])
-#     all_orders_df = pd.concat([sell_orders_df, buy_orders_df])
-#
-#     if sell_orders_df.__len__() > 0:
-#         print(f'\nRebuild SELL orders:')
-#         sell_orders_df = sell_orders_df.sort_values(['price']).reset_index(drop=True)
-#         sell_orders_df_json = rebuild_orders(sell_orders_df, 'SELL')
-#         state_history.rewrite_cannot_sell(sell_orders_df_json)
-#
-#     if buy_orders_df.__len__() > 0:
-#         print(f'\nRebuild BUY orders:')
-#         buy_orders_df = buy_orders_df.sort_values(['price'], ascending=False).reset_index(drop=True)
-#         buy_orders_df_json = rebuild_orders(buy_orders_df, 'BUY')
-#         state_history.rewrite_cannot_buy(buy_orders_df_json)
-#
-#     # if (current_orders_df.__len__() >= limit_orders_amount) and (sell_orders_df.__len__() < limit_orders_amount + 2) \
-#     #         and (all_orders_df.__len__() < limit_orders_amount + 4):
-#     #     print(f'current_orders_df.__len__() >= {limit_orders_amount}  | ', current_orders_df.__len__())
-#     #     print(f'sell_orders_df.__len__() < {limit_orders_amount + 2}     | ', sell_orders_df.__len__())
-#     #     print(f'all_orders_df.__len__() < {limit_orders_amount + 4}      | ', all_orders_df.__len__())
-#     #     trade_process(symbol, profit_percent=0.6)
-#
-#
-

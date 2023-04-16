@@ -48,12 +48,17 @@ do
       str_param+="$force_url "
       printf "%s " " $force_url';"
       ;;
+     -h|--help)
+      help="--help"
+      str_param+="$help "
+      printf "%s " " $help';"
+      ;;
    -*)
-      echo "Invalid option '$1'. Use -h|--help to see the valid options" >&2
+      echo "Invalid option '$1'. Use -h or --help to see the valid options" >&2
       return 1
       ;;
    *)
-      echo "Invalid option '$1'. Use -h|--help to see the valid options" >&2
+      echo "Invalid option '$1'. Use -h or --help to see the valid options" >&2
       return 1
    ;;
    esac

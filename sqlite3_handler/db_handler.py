@@ -8,15 +8,22 @@ except ModuleNotFoundError:
 
 class SQLiteHandler:
 
-    def __init__(self, db_name='sqlite', db_dir='.', check_same_thread=None):
+    def __init__(self, db_name='sqlite', db_dir='.', check_same_thread=True, read_only=False):
 
         self.db_dir = db_dir
         self.db_name = f"{db_name}.db"
         self.db_path = f"{self.db_dir}/{self.db_name}"
-        if check_same_thread is not None:
-            self.connected_db = sqlite3.connect(self.db_path, check_same_thread=check_same_thread)
+        if read_only:
+            self.connected_db = sqlite3.connect(
+                f"file:{self.db_path}?mode=ro",
+                uri=True,
+                check_same_thread=check_same_thread
+            )
         else:
-            self.connected_db = sqlite3.connect(self.db_path)
+            self.connected_db = sqlite3.connect(
+                self.db_path,
+                check_same_thread=check_same_thread
+            )
         self.cursor = self.connected_db.cursor()
 
     def close(self):
