@@ -24,6 +24,7 @@ class WebsocketClient(SpotWebsocketClient):
         self.second_symbol = second_symbol
         self.symbol = f"{self.first_symbol}{self.second_symbol}"
         self.kline_output_key = True
+        self.kline_data = None
 
         api_key, api_secret, base_url, stream_url = Kiss.get_api_credentials(test_key, low_permissions)
 

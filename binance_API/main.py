@@ -5,20 +5,20 @@ import datetime
 from decimal import Decimal, getcontext, ROUND_CEILING, ROUND_UP, ROUND_HALF_UP, ROUND_HALF_EVEN, ROUND_HALF_DOWN
 import time
 
-# print(1_000_000)
+print(1_000_000 // 10 ** 6)
 
-first_state = 1680873169207
-print(int(time.time()*1000 // 1))
-print(datetime.datetime.utcfromtimestamp(int(time.time())))
-print(datetime.datetime.utcfromtimestamp(first_state/1000))
-print(datetime.timedelta(days=1))
-secs = datetime.timedelta(days=1).total_seconds()
-print("secs:", secs)
-delta = datetime.datetime.utcfromtimestamp(first_state/1000) - datetime.timedelta(1)
-print('delta:', delta)
-print(type(delta))
-res_state = first_state - secs * 1000
-print(datetime.datetime.utcfromtimestamp(res_state/1000))
+# first_state = 1680873169207
+# print(int(time.time()*1000 // 1))
+# print(datetime.datetime.utcfromtimestamp(int(time.time())))
+# print(datetime.datetime.utcfromtimestamp(first_state/1000))
+# print(datetime.timedelta(days=1))
+# secs = datetime.timedelta(days=1).total_seconds()
+# print("secs:", secs)
+# delta = datetime.datetime.utcfromtimestamp(first_state/1000) - datetime.timedelta(1)
+# print('delta:', delta)
+# print(type(delta))
+# res_state = first_state - secs * 1000
+# print(datetime.datetime.utcfromtimestamp(res_state/1000))
 
 # print('1564034571105')
 # print('1680625921677')

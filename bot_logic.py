@@ -22,7 +22,7 @@ sqlh: SQLiteHandler
 buy_div = 0.2  # sell_div = 1 - buy_div
 profit_percent = 0.3
 cost_limit = 160
-loop_waiting = (5 * 60) + 0
+loop_waiting = (1 * 60) + 0
 
 
 def create_buy_order():
@@ -206,14 +206,18 @@ def new_order_from_pending_db(pending_orders):
         create_buy_order_from_dict(buy_orders[buy_orders_df['index'][0]])
 
 
-def trade_process(custom_buy_div=None):
+def trade_process(custom_buy_div=None, custom_cost_limit=None):
     """
+        :param custom_profit_percent:
         :param custom_buy_div: float
         0.5 > $more ----s==|==b---- $less ; stable
         0.75 >      -----s=|===b---       ; down
         0.25 >      ---s===|=b-----       ; up
         "--s==|==b--" - offset of buy price
     """
+    if custom_cost_limit is None:
+        custom_cost_limit = cost_limit
+
     if custom_buy_div is None:
         buy_profit_percent = 1 - (profit_percent * buy_div) / 100
         sell_profit_percent = 1 + (profit_percent * (1 - buy_div)) / 100
@@ -226,12 +230,12 @@ def trade_process(custom_buy_div=None):
         Decimal(buy_profit_percent)
     ) // Decimal(spot_client.filters['PRICE_FILTER_tickSize']) * Decimal(spot_client.filters['PRICE_FILTER_tickSize'])
 
-    if Decimal(str(cost_limit)) * Decimal('0.09') < Decimal(spot_client.filters['MIN_NOTIONAL_minNotional']):
+    if Decimal(str(custom_cost_limit)) * Decimal('0.09') < Decimal(spot_client.filters['MIN_NOTIONAL_minNotional']):
         purchase_cost = (Decimal(spot_client.filters['MIN_NOTIONAL_minNotional']) * Decimal('1.01')).quantize(
             Decimal('0.00000000'), rounding=ROUND_HALF_UP
         )
     else:
-        purchase_cost = (Decimal(cost_limit) * Decimal('0.11')).quantize(
+        purchase_cost = (Decimal(custom_cost_limit) * Decimal('0.11')).quantize(
             Decimal('0.00000000'), rounding=ROUND_HALF_UP
         )
 
@@ -281,7 +285,7 @@ def trade_process(custom_buy_div=None):
     }
     sqlh.insert_from_dict('orders_pair', pair_pk_to_db)
 
-    to_print_data = f"\n             Pending orders created (profit_percent: {profit_percent})" \
+    to_print_data = f"\n             Pending orders created (profit_percent: {custom_cost_limit})" \
                     f"\nBuy:      Price: {buy_price}  | Quantity: {quantity}    |    Cost: {buy_cost}" \
                     f"\nSell:     Price: {sell_price}  | Quantity: {quantity}    |    Cost: {sell_cost}"
 
@@ -321,6 +325,8 @@ def if_buy():
 def if_buy_kline():
     """
     """
+    custom_cost_limit = cost_limit * 2
+
     orders_in_process = get_orders_in_process_from_db()
 
     sorted_df_from_lost_of_orders(
@@ -332,22 +338,30 @@ def if_buy_kline():
         reset_index=True
     )
 
-    print(f"average volume x2:   {str(float(spot_client.last_kline['all_cost']) / 48):>24}")
-    print(f"all volume:          {str(web_socket.kline_data['all_cost']):>24}")
-    print(f"buy volume:          {str(web_socket.kline_data['buy_cost']):>24}")
-    print(f"sell volume:         {str(web_socket.kline_data['sell_cost']):>24}")
+    average_all_cost = (Decimal(spot_client.last_kline['all_cost']) / 48 * Decimal('0.8')
+                        ) // Decimal('0.00000001') * Decimal('0.00000001')
+    all_cost = float(web_socket.kline_data['all_cost'])
+    buy_cost = float(web_socket.kline_data['buy_cost'])
+    sell_cost = float(web_socket.kline_data['sell_cost'])
+    buy_part = Decimal(100 * (buy_cost / all_cost)).quantize(Decimal("0.0"), rounding=ROUND_HALF_UP)
+    sell_part = Decimal(100 * (sell_cost / all_cost)).quantize(Decimal("0.0"), rounding=ROUND_HALF_UP)
 
-    if (float(web_socket.kline_data['buy_cost']) > float(spot_client.last_kline["all_cost"]) / 48) and (
-        float(web_socket.kline_data['buy_cost']) > float(web_socket.kline_data["all_cost"]) * 0.7
-    ):
-        print("UP > custom_buy_div=0.2")
-        trade_process(custom_buy_div=0.2)
+    print(f"\nAverage volume x2:   {str(average_all_cost):>24} | {str(average_all_cost // 10 ** 5 / 10):>6}M")
+    print(f"All volume:          {str(all_cost):>24} | {str(all_cost // 10 ** 5 / 10):>6}M |  100%")
+    print(f"Buy volume:          {str(buy_cost):>24} | {str(buy_cost // 10 ** 5 / 10):>6}M | {str(buy_part):>4}%")
+    print(f"Sell volume:         {str(sell_cost):>24} | {str(sell_cost // 10 ** 5 / 10):>6}M | {str(sell_part):>4}%")
 
-    elif (float(web_socket.kline_data['sell_cost']) > float(spot_client.last_kline["all_cost"]) / 48) and (
-        float(web_socket.kline_data['sell_cost']) > float(web_socket.kline_data["all_cost"]) * 0.7
+    if (float(web_socket.kline_data['all_cost']) > float(spot_client.last_kline["all_cost"]) / 48 * 0.8) and (
+        float(web_socket.kline_data['buy_cost']) > float(web_socket.kline_data["all_cost"]) * 0.6
     ):
-        print("DOWN > custom_buy_div=0.8")
-        trade_process(custom_buy_div=0.8)
+        print("\nUP > custom_buy_div=0.2")
+        trade_process(custom_buy_div=0.2, custom_cost_limit=custom_cost_limit)
+
+    elif (float(web_socket.kline_data['all_cost']) > float(spot_client.last_kline["all_cost"]) / 48 * 0.8) and (
+        float(web_socket.kline_data['sell_cost']) > float(web_socket.kline_data["all_cost"]) * 0.6
+    ):
+        print("\nDOWN > custom_buy_div=0.8")
+        trade_process(custom_buy_div=0.8, custom_cost_limit=custom_cost_limit)
 
 
 def start_bot_logic():
@@ -453,7 +467,7 @@ def start_bot_logic():
 
         try:
             web_socket.stream_execution_reports(db_name=db_name, db_dir=base_path)
-            web_socket.kline_output_key=False
+            web_socket.kline_output_key = False
             web_socket.stream_kline()
 
             spot_client.get_current_state()
@@ -473,6 +487,13 @@ def start_bot_logic():
 
             update_orders_db()
 
+            # Waiting for first kline
+            if web_socket.kline_data is None:
+                print("Waiting for first kline:")
+                while web_socket.kline_data is not None:
+                    sleep(1)
+                    print(".", end='')
+
             renew_listen_key_counter = 0
             while True:
 
@@ -486,7 +507,7 @@ def start_bot_logic():
                 if renew_listen_key_counter >= 15:
                     spot_client.renew_listen_key(spot_client.listen_key)
                     renew_listen_key_counter = 0
-                    print("listen_key is updated:", repr(spot_client.listen_key))
+                    print("listen_key is updated!")
 
                 # Printing header before sleeping
                 resp_type_pr = f'---- UTC time -------------------------------------- ' \
@@ -509,7 +530,7 @@ def start_bot_logic():
                         while_counter = 20
 
                     except Exception as _ex:
-                        print("[ERROR] start_bot_logic > id_arg == 4 > ", _ex)
+                        print("[ERROR] start_bot_logic > id_arg == 2 > ", _ex)
                         while_counter += 1
                         time.sleep(randint(1, 10))
 
@@ -555,7 +576,7 @@ def start_bot_logic():
                 if renew_listen_key_counter >= 15:
                     spot_client.renew_listen_key(spot_client.listen_key)
                     renew_listen_key_counter = 0
-                    print("listen_key is updated:", repr(spot_client.listen_key))
+                    print("listen_key is updated!")
 
                 sleep(loop_waiting)
                 renew_listen_key_counter += 1
@@ -626,7 +647,7 @@ def start_bot_logic():
                 if renew_listen_key_counter >= 15:
                     spot_client.renew_listen_key(spot_client.listen_key)
                     renew_listen_key_counter = 0
-                    print("listen_key is updated:", repr(spot_client.listen_key))
+                    print("listen_key is updated!")
 
                 # Printing header before sleeping
                 resp_type_pr = f'---- UTC time -------------------------------------- ' \
@@ -725,6 +746,34 @@ def start_bot_logic():
                 print("." * counter)
                 sleep(1)
 
+    elif id_arg == 7:
+
+        web_socket = WebsocketClient(
+            test_key=test_key,
+            force_url=force_url,
+            low_permissions=True,
+            first_symbol=first_symbol,
+            second_symbol=second_symbol
+        )
+
+        try:
+            web_socket.stream_agg_trades()
+
+            while True:
+                sleep(5)
+                print()
+
+        except KeyboardInterrupt:
+            ...
+        finally:
+            web_socket.stop()
+            print(f'\n{Tags.LightYellow}WebSocket is stopped{Tags.ResetAll}')
+            print("Sleep 5 sec:")
+            for counter in range(1, 6):
+                print('Sleep progress: ', end='')
+                print("." * counter)
+                sleep(1)
+
     else:
         print("[ERROR] start_bot_logic > id_arg is out of range | expected 2 or 6")
         print("id_arg = 1 > web_socket.stream_ticker() > [ERROR] TODO")
@@ -733,6 +782,7 @@ def start_bot_logic():
         print("id_arg = 4 > web_socket.stream_execution_reports()")
         print("id_arg = 5 > web_socket.stream_trades()")
         print("id_arg = 6 > web_socket.stream_agg_trades()")
+        print("id_arg = 7 > web_socket.stream_agg_trades() > symbols from file ")
 
 
 if __name__ == '__main__':
