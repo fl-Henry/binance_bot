@@ -10,8 +10,9 @@ err_exit(){
 
 # Get the option
 r_key=false
-
+update_symbols_key=false
 str_param=""
+
 printf "%s " "Params: "
 while [ "$#" -gt 0 ]
 do
@@ -19,6 +20,10 @@ do
    -f|--freeze)
       r_key=true
       printf "%s " " freeze;"
+      ;;
+   -u|--update-symbols)
+      update_symbols_key=true
+      printf "%s " " --update-symbols;"
       ;;
    --first-symbol)
       shift
@@ -86,11 +91,19 @@ if [ "$r_key" = true ]; then
     pip freeze
 fi
 
-echo "$str_param"
-echo "python ./bot_logic.py:"
+# Updating symbols list
+printf "\nUpdating symbols list \n"
+if $update_symbols_key; then
+    printf "python ./getting_data/scrape_app.py > \n"
+    python ./getting_data/scrape_app.py
+    printf "< python ./getting_data/scrape_app.py\n\n"
+fi
+
+# Starting bot with
+printf "\n%s\n" "Starting bot with args: $str_param "
+printf "python ./bot_logic.py > \n"
 while true ; do echo "$str_param" | xargs python ./bot_logic.py || sleep 5; done
-echo
-echo "python: closed"
+printf "< python ./bot_logic.py\n\n"
 
 echo "Changing directory to: $start_dir"
 cd "$start_dir" || err_exit $?

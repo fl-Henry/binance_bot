@@ -36,8 +36,8 @@ class ProxyRotator:
 class SeleniumHandler:
 
     def __init__(self, config_name, logger: Logger = None):
-        self.browser = None
         self.config = None
+        self.browser: uc.Chrome = None
 
         if config_name is None:
             self.config_name = 'main.cfg'
@@ -197,7 +197,6 @@ class SeleniumHandler:
                 self.logger.info("Login Failed!")
                 self.logger.info(f"Current URL: {self.browser.current_url}")
             # exit(1)
-
 
 
 if __name__ == '__main__':

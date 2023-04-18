@@ -79,9 +79,9 @@ if [ "$r_key" = true ]; then
     pip freeze
 fi
 
-printf "\npython app/app.py > \n"
-python app/app.py
-printf "< python app/app.py\n\n"
+printf "\npython getting_data/scrape_app.py > \n"
+python getting_data/scrape_app.py
+printf "< python getting_data/scrape_app.py\n\n"
 
 echo "Changing directory to: $start_dir"
 cd "$start_dir" || err_exit $?

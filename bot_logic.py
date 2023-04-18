@@ -4,6 +4,7 @@ import time
 import argparse
 import pandas as pd
 
+from binance.error import ClientError
 from decimal import Decimal, ROUND_HALF_UP, ROUND_UP
 from datetime import datetime
 from random import randint
@@ -208,7 +209,7 @@ def new_order_from_pending_db(pending_orders):
 
 def trade_process(custom_buy_div=None, custom_cost_limit=None):
     """
-        :param custom_profit_percent:
+        :param custom_cost_limit: int
         :param custom_buy_div: float
         0.5 > $more ----s==|==b---- $less ; stable
         0.75 >      -----s=|===b---       ; down
@@ -340,9 +341,9 @@ def if_buy_kline():
 
     average_all_cost = (Decimal(spot_client.last_kline['all_cost']) / 48 * Decimal('0.8')
                         ) // Decimal('0.00000001') * Decimal('0.00000001')
-    all_cost = float(web_socket.kline_data['all_cost'])
-    buy_cost = float(web_socket.kline_data['buy_cost'])
-    sell_cost = float(web_socket.kline_data['sell_cost'])
+    all_cost = float(web_socket.kline_last['all_cost'])
+    buy_cost = float(web_socket.kline_last['buy_cost'])
+    sell_cost = float(web_socket.kline_last['sell_cost'])
     buy_part = Decimal(100 * (buy_cost / all_cost)).quantize(Decimal("0.0"), rounding=ROUND_HALF_UP)
     sell_part = Decimal(100 * (sell_cost / all_cost)).quantize(Decimal("0.0"), rounding=ROUND_HALF_UP)
 
@@ -350,18 +351,28 @@ def if_buy_kline():
     print(f"All volume:          {str(all_cost):>24} | {str(all_cost // 10 ** 5 / 10):>6}M |  100%")
     print(f"Buy volume:          {str(buy_cost):>24} | {str(buy_cost // 10 ** 5 / 10):>6}M | {str(buy_part):>4}%")
     print(f"Sell volume:         {str(sell_cost):>24} | {str(sell_cost // 10 ** 5 / 10):>6}M | {str(sell_part):>4}%")
+    print("\nOrders in process cost:", orders_in_process['orders_new_cost'])
+    print('Cost limit', cost_limit)
 
-    if (float(web_socket.kline_data['all_cost']) > float(spot_client.last_kline["all_cost"]) / 48 * 0.8) and (
-        float(web_socket.kline_data['buy_cost']) > float(web_socket.kline_data["all_cost"]) * 0.6
+    if len(orders_in_process['orders_pending']) > 0:
+        new_order_from_pending_db(orders_in_process['orders_pending'])
+    elif (float(web_socket.kline_last['all_cost']) > float(spot_client.last_kline["all_cost"]) / 48 * 0.8) and (
+        float(web_socket.kline_last['buy_cost']) > float(web_socket.kline_last["all_cost"]) * 0.6) and (
+        orders_in_process['orders_new_cost'] < cost_limit
     ):
         print("\nUP > custom_buy_div=0.2")
         trade_process(custom_buy_div=0.2, custom_cost_limit=custom_cost_limit)
 
-    elif (float(web_socket.kline_data['all_cost']) > float(spot_client.last_kline["all_cost"]) / 48 * 0.8) and (
-        float(web_socket.kline_data['sell_cost']) > float(web_socket.kline_data["all_cost"]) * 0.6
+    elif (float(web_socket.kline_last['all_cost']) > float(spot_client.last_kline["all_cost"]) / 48 * 0.8) and (
+        float(web_socket.kline_last['sell_cost']) > float(web_socket.kline_last["all_cost"]) * 0.6) and (
+        orders_in_process['orders_new_cost'] < cost_limit
     ):
         print("\nDOWN > custom_buy_div=0.8")
         trade_process(custom_buy_div=0.8, custom_cost_limit=custom_cost_limit)
+
+
+def checking_symbol_history(symbol):
+    print(web_socket.kline_history[symbol])
 
 
 def start_bot_logic():
@@ -375,44 +386,51 @@ def start_bot_logic():
         id_arg = 6 > web_socket.stream_agg_trades()
     """
 
-    parser = argparse.ArgumentParser(description='Binance app')
-    parser.add_argument('--first-symbol', dest='first_symbol', required=True,
-                        help='Symbol of token to buy Ex: "BTC"')
-    parser.add_argument('--second-symbol', dest='second_symbol', default='USDT',
-                        help='Symbol of token as money Ex: "USDT"')
-    parser.add_argument('--id', dest='id', default=5,
-                        help='Id of callback Ex: 5')
-    parser.add_argument('--test', dest='test_key', nargs='?', const=True, default=False,
-                        help='Enable test mode')
-    parser.add_argument('--force-url', dest='force_url', nargs='?', const=True, default=False,
-                        help="Enable force url for Spot and Websocket (in the test mode has no effect")
-    args = parser.parse_args()
+    # Parsing arguments
+    try:
+        parser = argparse.ArgumentParser(description='Binance app')
+        parser.add_argument('--first-symbol', dest='first_symbol', default='BTC',
+                            help='Symbol of token to buy Ex: "BTC"')
+        parser.add_argument('--second-symbol', dest='second_symbol', default='USDT',
+                            help='Symbol of token as money Ex: "USDT"')
+        parser.add_argument('--id', dest='id', default=5,
+                            help='Id of callback Ex: 5')
+        parser.add_argument('--test', dest='test_key', nargs='?', const=True, default=False,
+                            help='Enable test mode')
+        parser.add_argument('--force-url', dest='force_url', nargs='?', const=True, default=False,
+                            help="Enable force url for Spot and Websocket (in the test mode has no effect")
+        args = parser.parse_args()
 
-    first_symbol = args.first_symbol
-    second_symbol = args.second_symbol
-    id_arg = int(args.id)
-    test_key = args.test_key
-    force_url = args.force_url
+        first_symbol = args.first_symbol
+        second_symbol = args.second_symbol
+        id_arg = int(args.id)
+        test_key = args.test_key
+        force_url = args.force_url
 
-    base_path = str(__file__)[:len(__file__) - len(os.path.basename(str(__file__))) - 1]
+        base_path = str(__file__)[:len(__file__) - len(os.path.basename(str(__file__))) - 1]
 
-    print(
-        '\nfirst_symbol:', first_symbol,
-        '\nsecond_symbol:', second_symbol,
-        '\nid_arg:', id_arg,
-        '\ntest_key:', test_key,
-        '\nforce_url:', force_url,
-    )
+        print(
+            '\nfirst_symbol:', first_symbol,
+            '\nsecond_symbol:', second_symbol,
+            '\nid_arg:', id_arg,
+            '\ntest_key:', test_key,
+            '\nforce_url:', force_url,
+        )
 
-    if test_key:
-        db_name = f"test_{first_symbol}{second_symbol}"
-    else:
-        db_name = f"{first_symbol}{second_symbol}"
+        if test_key:
+            db_name = f"test_{first_symbol}{second_symbol}"
+        else:
+            db_name = f"{first_symbol}{second_symbol}"
 
-    global spot_client
-    global web_socket
-    global sqlh
+        global spot_client
+        global web_socket
+        global sqlh
 
+    except Exception as _ex:
+        print("[ERROR] Parsing arguments >", _ex)
+        sys.exit(1)
+
+    # launching the mode logic
     if id_arg == 1:
         # TODO ???
         print('[ERROR] TODO')
@@ -488,15 +506,14 @@ def start_bot_logic():
             update_orders_db()
 
             # Waiting for first kline
-            if web_socket.kline_data is None:
+            if web_socket.kline_last is None:
                 print("Waiting for first kline:")
-                while web_socket.kline_data is not None:
+                while web_socket.kline_last is not None:
                     sleep(1)
                     print(".", end='')
 
             renew_listen_key_counter = 0
             while True:
-
                 # Mode base logic
                 print(f'{Tags.BackgroundLightYellow}{Tags.Black}'
                       f'\n      Scheduled if_buy_kline'
@@ -748,20 +765,87 @@ def start_bot_logic():
 
     elif id_arg == 7:
 
-        web_socket = WebsocketClient(
+        spot_client = SpotClient(
             test_key=test_key,
             force_url=force_url,
-            low_permissions=True,
             first_symbol=first_symbol,
             second_symbol=second_symbol
         )
 
-        try:
-            web_socket.stream_agg_trades()
+        web_socket = WebsocketClient(
+            test_key=test_key,
+            force_url=force_url,
+            low_permissions=True,
+        )
 
+        try:
+            with open('getting_data/symbols.txt', 'r') as f:
+                symbols_list_form_file = f.read()
+                symbols_list_form_file = [x.strip("[',]").strip() for x in symbols_list_form_file.split(' ')]
+
+            # Creating symbol pairs list
+            symbols_list = []
+            for symbol in symbols_list_form_file:
+                symbol += "USDT"
+                symbols_list.append(symbol)
+
+            # Getting filters
+            filters_list = []
+            for symbol in symbols_list:
+                try:
+                    filters_list.append(spot_client.get_exchange_info(symbol))
+                except ClientError as _ex:
+                    print(f"\n{Tags.LightYellow}[WARNING] Getting filters > {_ex.error_message} > "
+                          f"{symbol} is removed from the symbol_list{Tags.ResetAll}")
+                    symbols_list.remove(symbol)
+
+            # Creating streams
+            for symbol in symbols_list:
+                try:
+                    stream_id = randint(1, 99999)
+                    print(f"Stream: {symbol}; ID: {stream_id}")
+                    web_socket.kline_output_key = False
+                    web_socket.stream_kline_history(symbol=symbol, stream_id=stream_id)
+                    sleep(0.3)
+                except ClientError as _ex:
+                    print(f"\n{Tags.LightYellow}[WARNING] Creating streams > {_ex.error_message} > "
+                          f"{symbol} is removed from the symbol_list{Tags.ResetAll}")
+                    symbols_list.remove(symbol)
+
+            # Getting 1h klines
+            kline_1h_list = {}
+            for symbol in symbols_list:
+                try:
+                    kline_1h = spot_client.get_kline(
+                        symbol=symbol,
+                        interval='1m',
+                        limit=60,
+                        output_key=True,
+                        if_sum=True
+                    )
+                    kline_1h_list.update({symbol: kline_1h})
+                    web_socket.kline_history[symbol] = kline_1h['klines']
+                    sleep(0.3)
+                except ClientError as _ex:
+                    print(f"\n{Tags.LightYellow}[WARNING] Getting 24h klines > {_ex.error_message} > "
+                          f"{symbol} is removed from the symbol_list{Tags.ResetAll}")
+                    symbols_list.remove(symbol)
+
+            # The base mode logic
             while True:
-                sleep(5)
-                print()
+
+                # Checking if symbol is ready to trade process
+                for symbol in symbols_list:
+                    checking_symbol_history(symbol)
+                    break
+
+                # Printing header before sleeping
+                resp_type_pr = f'---- UTC time -------------------------------------- ' \
+                               f'{str(datetime.utcfromtimestamp(int(time.time()))):<20}' \
+                               f' ----'
+                print(f'\n{Tags.LightBlue}{resp_type_pr}{Tags.ResetAll}')
+                print(f'Waiting {loop_waiting} sec')
+                sleep(loop_waiting)
 
         except KeyboardInterrupt:
             ...

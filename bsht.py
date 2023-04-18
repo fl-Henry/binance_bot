@@ -5,7 +5,29 @@ import datetime
 from decimal import Decimal, getcontext, ROUND_CEILING, ROUND_UP, ROUND_HALF_UP, ROUND_HALF_EVEN, ROUND_HALF_DOWN
 import time
 
-print(1_000_000 // 10 ** 6)
+with open('getting_data/symbols.txt', 'r') as f:
+    symbols_list = f.read()
+    symbols_list = [x.strip("[',]").strip() for x in symbols_list.split(' ')]
+    print(symbols_list)
+    # for symbol in symbols_list:
+    #     print(symbol)
+
+
+def shift(data_list):
+    to_app = "smthng"
+    if len(data_list) > 10:
+        data_list = [
+            x for x in data_list[1:]
+        ]
+    data_list.append(to_app)
+    print(data_list)
+    return data_list
+
+
+symbols_list = shift(symbols_list)
+symbols_list = shift(symbols_list)
+
+# print(1_000_000 // 10 ** 6)
 
 # first_state = 1680873169207
 # print(int(time.time()*1000 // 1))

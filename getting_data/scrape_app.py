@@ -5,7 +5,7 @@ from selenium_handler import SeleniumHandler
 from scrape_logic import script_process
 
 if __name__ == '__main__':
-    lh = LogHandler(name='myparts_ge',)
+    lh = LogHandler(name='binance_markets_spot',)
     sh = SeleniumHandler('main.cfg', lh.logger)
     script_process(sh, lh)
     sleep(10)

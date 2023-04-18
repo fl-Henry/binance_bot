@@ -24,7 +24,8 @@ class WebsocketClient(SpotWebsocketClient):
         self.second_symbol = second_symbol
         self.symbol = f"{self.first_symbol}{self.second_symbol}"
         self.kline_output_key = True
-        self.kline_data = None
+        self.kline_last = None
+        self.kline_history = {}
 
         api_key, api_secret, base_url, stream_url = Kiss.get_api_credentials(test_key, low_permissions)
 
@@ -43,6 +44,8 @@ class WebsocketClient(SpotWebsocketClient):
 
         self.listen_key = listen_key
 
+    # Stream handlers =====================================================================================
+    # Stream handlers =====================================================================================
     @staticmethod
     def _book_ticker(response):
 
@@ -114,7 +117,7 @@ class WebsocketClient(SpotWebsocketClient):
                     rounding=ROUND_HALF_UP
                 ),
             }
-            self.kline_data = response_data
+            self.kline_last = response_data
 
             if self.kline_output_key:
                 output = f"[{response_data['symbol']}] " \
@@ -130,11 +133,98 @@ class WebsocketClient(SpotWebsocketClient):
                          f"Qty: {response_data['sell_origQty']:>20}"
 
                 if response_data['close_price'] >= response_data["open_price"]:
-                    output += f"\n-- {response_data['high_price']} --:: {response_data['close_price']} ::" \
+                    output += f"\n-- UP ----" \
+                              f"\n-- {response_data['high_price']} --:: {response_data['close_price']} ::" \
                               f":: {response_data['open_price']} ::-- {response_data['low_price']} --"
                 else:
-                    output += f"\n-- {response_data['high_price']} --:: {response_data['open_price']} ::" \
+                    output += f"\n-- DOWN --" \
+                              f"\n-- {response_data['high_price']} --:: {response_data['open_price']} ::" \
                               f":: {response_data['close_price']} ::-- {response_data['low_price']} --"
+
+                resp_type_pr = f'---- Kline ----------------------------------------- ' \
+                               f'{response_data["time_utc"]:<20}' \
+                               f' ----'
+
+                print(f'\n{Tags.LightBlue}{resp_type_pr}{Tags.ResetAll}')
+                print(output)
+
+        else:
+            print(repr(response))
+
+    def _kline_history(self, response):
+        """"""
+        if response.get('e') == 'kline':
+
+            response_data = {
+                "symbol": response["s"],
+                "time": response["E"],
+                "time_utc": str(datetime.datetime.utcfromtimestamp(int(int(response["E"])) // 1000)),
+                "start_time": response["k"]["t"],
+                "start_time_utc": str(datetime.datetime.utcfromtimestamp(int(int(response["k"]["t"])) // 1000)),
+                "close_time": response["k"]["T"],
+                "close_time_utc": str(datetime.datetime.utcfromtimestamp(int(int(response["k"]["T"])) // 1000)),
+                "interval": response["k"]["i"],
+                "first_orderId": response["k"]["f"],
+                "last_orderId": response["k"]["L"],
+                "open_price": response["k"]["o"],
+                "close_price": response["k"]["c"],
+                "high_price": response["k"]["h"],
+                "low_price": response["k"]["l"],
+                "number_of_trades": response["k"]["n"],
+                "if_closed": response["k"]["x"],
+                "all_origQty": response["k"]["v"],
+                "all_cost": response["k"]["q"],
+                "buy_origQty": response["k"]["V"],
+                "buy_cost": response["k"]["Q"],
+                "sell_origQty": (Decimal(str(response["k"]["v"])) - Decimal(str(response["k"]["V"]))).quantize(
+                    Decimal('0.00000000'),
+                    rounding=ROUND_HALF_UP
+                ),
+                "sell_cost": (Decimal(str(response["k"]["q"])) - Decimal(str(response["k"]["Q"]))).quantize(
+                    Decimal('0.00000000'),
+                    rounding=ROUND_HALF_UP
+                ),
+            }
+
+            # adding data to kline_history
+            if len(self.kline_history[response_data['symbol']]) > 60 - 1:
+                self.kline_history[response_data['symbol']] = [
+                    x for x in self.kline_history[response_data['symbol']][1:]
+                ]
+            self.kline_history[response_data['symbol']].append(response_data)
+
+            # Creating output for print
+            if (float(response_data['all_cost']) != 0) and self.kline_output_key:
+                # 1m TODO all intervals
+                all_cost = float(response_data['all_cost'])
+                buy_cost = float(response_data['buy_cost'])
+                sell_cost = float(response_data['sell_cost'])
+                buy_part = Decimal(100 * (buy_cost / all_cost)).quantize(Decimal("0.0"), rounding=ROUND_HALF_UP)
+                sell_part = Decimal(100 * (sell_cost / all_cost)).quantize(Decimal("0.0"), rounding=ROUND_HALF_UP)
+
+                output = f"[{response_data['symbol']}] " \
+                         f"Start: {response_data['start_time_utc']:>20} | " \
+                         f"Close: {response_data['close_time_utc']:>20}" \
+                         f"\nAll volume:      {str(all_cost):>24} | " \
+                         f"{str(all_cost // 10 ** 5 / 10):>6}M | {str(all_cost // 10 ** 2 / 10):>6}K | " \
+                         f" 100%" \
+                         f"\nBuy volume:      {str(buy_cost):>24} | " \
+                         f"{str(buy_cost // 10 ** 5 / 10):>6}M | {str(buy_cost // 10 ** 2 / 10):>6}K | " \
+                         f"{str(buy_part):>4}%" \
+                         f"\nSell volume:     {str(sell_cost):>24} | " \
+                         f"{str(sell_cost // 10 ** 5 / 10):>6}M | {str(sell_cost // 10 ** 2 / 10):>6}K | " \
+                         f"{str(sell_part):>4}%"
+
+                if response_data['close_price'] >= response_data["open_price"]:
+                    output += f"\n{Tags.Green}-- UP ----" \
+                              f"\n-- {response_data['high_price']} --:: {response_data['close_price']} ::" \
+                              f":: {response_data['open_price']} ::-- {response_data['low_price']} --" \
+                              f"{Tags.ResetAll}"
+                else:
+                    output += f"\n{Tags.Red}-- DOWN --" \
+                              f"\n-- {response_data['high_price']} --:: {response_data['open_price']} ::" \
+                              f":: {response_data['close_price']} ::-- {response_data['low_price']} --" \
+                              f"{Tags.ResetAll}"
 
                 resp_type_pr = f'---- Kline ----------------------------------------- ' \
                                f'{response_data["time_utc"]:<20}' \
@@ -524,6 +614,8 @@ class WebsocketClient(SpotWebsocketClient):
         else:
             print(repr(response))
 
+    # Streams =============================================================================================
+    # Streams =============================================================================================
     def stream_book_ticker(self):
 
         self.book_ticker(
@@ -532,13 +624,36 @@ class WebsocketClient(SpotWebsocketClient):
                     callback=self._book_ticker
                 )
 
-    def stream_kline(self, interval='15m'):
+    def stream_kline(self, interval=None, symbol=None, stream_id=None):
+        if symbol is None:
+            symbol = self.symbol
+        if stream_id is None:
+            stream_id = 2
+        if interval is None:
+            interval = '15m'
 
         self.kline(
-                id=2,
-                symbol=self.symbol,
+                id=stream_id,
+                symbol=symbol,
                 interval=interval,
                 callback=self._kline
+            )
+
+    def stream_kline_history(self, interval=None, symbol=None, stream_id=None):
+        if symbol is None:
+            symbol = self.symbol
+        if stream_id is None:
+            stream_id = 2
+        if interval is None:
+            interval = '1m'
+
+        self.kline_history.update({symbol: []})
+
+        self.kline(
+                id=stream_id,
+                symbol=symbol,
+                interval=interval,
+                callback=self._kline_history
             )
 
     def stream_user_data(self):
@@ -566,17 +681,28 @@ class WebsocketClient(SpotWebsocketClient):
         else:
             raise KeyError('listen_key is None')
 
-    def stream_trades(self):
+    def stream_trades(self, symbol=None, stream_id=None):
+        if symbol is None:
+            symbol = self.symbol
+        if stream_id is None:
+            stream_id = 5
+
         self.trade(
-            id=5,
-            symbol=self.symbol,
+            id=stream_id,
+            symbol=symbol,
             callback=self._trades
         )
 
-    def stream_agg_trades(self):
+    def stream_agg_trades(self, symbol=None, stream_id=None):
+
+        if symbol is None:
+            symbol = self.symbol
+        if stream_id is None:
+            stream_id = 6
+
         self.agg_trade(
-            id=6,
-            symbol=self.symbol,
+            id=stream_id,
+            symbol=symbol,
             callback=self._agg_trades
         )
 
