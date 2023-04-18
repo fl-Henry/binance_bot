@@ -339,7 +339,8 @@ def if_buy_kline():
         reset_index=True
     )
 
-    average_all_cost = (Decimal(spot_client.last_kline['all_cost']) / 48 * Decimal('0.8')
+    average_all_cost = (Decimal(spot_client.last_kline['sum']['all_cost']
+                                ) / Decimal(spot_client.last_kline['sum']['amount'])
                         ) // Decimal('0.00000001') * Decimal('0.00000001')
     all_cost = float(web_socket.kline_last['all_cost'])
     buy_cost = float(web_socket.kline_last['buy_cost'])
@@ -347,23 +348,28 @@ def if_buy_kline():
     buy_part = Decimal(100 * (buy_cost / all_cost)).quantize(Decimal("0.0"), rounding=ROUND_HALF_UP)
     sell_part = Decimal(100 * (sell_cost / all_cost)).quantize(Decimal("0.0"), rounding=ROUND_HALF_UP)
 
-    print(f"\nAverage volume x2:   {str(average_all_cost):>24} | {str(average_all_cost // 10 ** 5 / 10):>6}M")
-    print(f"All volume:          {str(all_cost):>24} | {str(all_cost // 10 ** 5 / 10):>6}M |  100%")
-    print(f"Buy volume:          {str(buy_cost):>24} | {str(buy_cost // 10 ** 5 / 10):>6}M | {str(buy_part):>4}%")
-    print(f"Sell volume:         {str(sell_cost):>24} | {str(sell_cost // 10 ** 5 / 10):>6}M | {str(sell_part):>4}%")
+    print(f"\nAverage volume:      {str(average_all_cost):>24} | {str(average_all_cost // 10 ** 5 / 10):>6}M | "
+          f"{str(average_all_cost // 10 ** 2 / 10):>6}K |")
+    print(f"All volume:          {str(all_cost):>24} | {str(all_cost // 10 ** 5 / 10):>6}M | "
+          f"{str(all_cost // 10 ** 2 / 10):>6}K |  100%")
+    print(f"Buy volume:          {str(buy_cost):>24} | {str(buy_cost // 10 ** 5 / 10):>6}M | "
+          f"{str(buy_cost // 10 ** 2 / 10):>6}K | {str(buy_part):>4}%")
+    print(f"Sell volume:         {str(sell_cost):>24} | {str(sell_cost // 10 ** 5 / 10):>6}M | "
+          f"{str(sell_cost // 10 ** 2 / 10):>6}K | {str(sell_part):>4}%")
     print("\nOrders in process cost:", orders_in_process['orders_new_cost'])
     print('Cost limit', cost_limit)
 
     if len(orders_in_process['orders_pending']) > 0:
         new_order_from_pending_db(orders_in_process['orders_pending'])
-    elif (float(web_socket.kline_last['all_cost']) > float(spot_client.last_kline["all_cost"]) / 48 * 0.8) and (
+    elif (float(web_socket.kline_last['all_cost']) > float(spot_client.last_kline['sum']["all_cost"]
+                                                           ) / float(spot_client.last_kline['sum']["amount"])) and (
         float(web_socket.kline_last['buy_cost']) > float(web_socket.kline_last["all_cost"]) * 0.6) and (
         orders_in_process['orders_new_cost'] < cost_limit
     ):
         print("\nUP > custom_buy_div=0.2")
         trade_process(custom_buy_div=0.2, custom_cost_limit=custom_cost_limit)
 
-    elif (float(web_socket.kline_last['all_cost']) > float(spot_client.last_kline["all_cost"]) / 48 * 0.8) and (
+    elif (float(web_socket.kline_last['all_cost']) > float(spot_client.last_kline['sum']["all_cost"]) / 48 * 0.8) and (
         float(web_socket.kline_last['sell_cost']) > float(web_socket.kline_last["all_cost"]) * 0.6) and (
         orders_in_process['orders_new_cost'] < cost_limit
     ):
@@ -371,8 +377,354 @@ def if_buy_kline():
         trade_process(custom_buy_div=0.8, custom_cost_limit=custom_cost_limit)
 
 
+def kline_sum(klines):
+    sum_of_klines = {
+        "symbol": klines[0]["symbol"],
+        "start_time": klines[0]['start_time'],
+        "start_time_utc": klines[0]['start_time_utc'],
+        "close_time": klines[-1]['close_time'],
+        "close_time_utc": klines[-1]['close_time_utc'],
+        "interval": klines[0]['interval'],
+        "open_price": klines[0]['open_price'],
+        "close_price": klines[-1]['close_price'],
+        "high_price": klines[0]['high_price'],
+        "low_price": klines[0]['low_price'],
+        "number_of_trades": '0',
+        "all_origQty": '0',
+        "all_cost": '0',
+        "buy_origQty": '0',
+        "buy_cost": '0',
+        "sell_origQty": '0',
+        "sell_cost": '0',
+    }
+    for kline in klines:
+        if Decimal(kline['high_price']) > Decimal(sum_of_klines['high_price']):
+            sum_of_klines.update({"high_price": kline['high_price']})
+
+        if Decimal(kline['low_price']) < Decimal(sum_of_klines['low_price']):
+            sum_of_klines.update({"low_price": kline['low_price']})
+
+        sum_of_klines.update(
+            {
+                "number_of_trades": int(sum_of_klines['number_of_trades']) + int(kline['number_of_trades'])
+            }
+        )
+
+        sum_of_klines.update(
+            {
+                "all_origQty": (Decimal(str(sum_of_klines['all_origQty'])) +
+                                Decimal(str(kline['all_origQty']))).quantize(
+                    Decimal('0.00000000'),
+                    rounding=ROUND_HALF_UP
+                ),
+            }
+        )
+
+        sum_of_klines.update(
+            {
+                "all_cost": (Decimal(str(sum_of_klines['all_cost'])) +
+                             Decimal(str(kline['all_cost']))).quantize(
+                    Decimal('0.00000000'),
+                    rounding=ROUND_HALF_UP
+                ),
+            }
+        )
+
+        sum_of_klines.update(
+            {
+                "buy_origQty": (Decimal(str(sum_of_klines['buy_origQty'])) +
+                                Decimal(str(kline['buy_origQty']))).quantize(
+                    Decimal('0.00000000'),
+                    rounding=ROUND_HALF_UP
+                ),
+            }
+        )
+
+        sum_of_klines.update(
+            {
+                "buy_cost": (Decimal(str(sum_of_klines['buy_cost'])) +
+                             Decimal(str(kline['buy_cost']))).quantize(
+                    Decimal('0.00000000'),
+                    rounding=ROUND_HALF_UP
+                ),
+            }
+        )
+
+        sum_of_klines.update(
+            {
+                "sell_origQty": (Decimal(str(sum_of_klines['sell_origQty'])) +
+                                 Decimal(str(kline['sell_origQty']))).quantize(
+                    Decimal('0.00000000'),
+                    rounding=ROUND_HALF_UP
+                ),
+            }
+        )
+
+        sum_of_klines.update(
+            {
+                "sell_cost": (Decimal(str(sum_of_klines['sell_cost'])) +
+                              Decimal(str(kline['sell_cost']))).quantize(
+                    Decimal('0.00000000'),
+                    rounding=ROUND_HALF_UP
+                ),
+            }
+        )
+
+    sum_of_klines.update({'amount': len(klines)})
+    return sum_of_klines
+
+
 def checking_symbol_history(symbol):
-    print(web_socket.kline_history[symbol])
+    klines = web_socket.kline_history[symbol]
+    sum_kline = kline_sum(klines)
+
+    # Counting amount of large volume of 15 last klines
+    amount_of_large_volume = 0
+    for kline in klines[-15:]:
+        if float(kline["all_cost"]) > float(sum_kline['all_cost']) / float(sum_kline['amount']):
+            amount_of_large_volume += 1
+
+
+def id_arg_1():
+    pass
+
+
+def id_arg_2(db_name, db_dir):
+    web_socket.stream_execution_reports(db_name=db_name, db_dir=db_dir)
+    web_socket.kline_output_key = False
+    web_socket.stream_kline()
+
+    spot_client.get_current_state()
+    spot_client.str_current_state()
+    if len(spot_client.current_state_data) > 0:
+        sqlh.insert_from_dict('current_state', spot_client.current_state_data)
+
+    spot_client.get_exchange_info()
+    if len(spot_client.filters) > 0:
+        sqlh.insert_from_dict('filters', spot_client.filters)
+    else:
+        print("[ERROR] Can't get filters")
+        sys.exit(1)
+
+    # Getting 24h kline
+    spot_client.get_kline(interval='1h', limit=24, output_key=True, if_sum=True)
+
+    update_orders_db()
+
+    # Waiting for first kline
+    if web_socket.kline_last is None:
+        print("Waiting for first kline:")
+        while web_socket.kline_last is not None:
+            sleep(1)
+            print(".", end='')
+
+    # Mode base logic
+    renew_listen_key_counter = 0
+    while True:
+        print(f'{Tags.BackgroundLightYellow}{Tags.Black}'
+              f'\n      Scheduled if_buy_kline'
+              f'{Tags.ResetAll}')
+        if_buy_kline()
+
+        # Updating listen_key
+        if renew_listen_key_counter >= 15:
+            spot_client.renew_listen_key(spot_client.listen_key)
+            renew_listen_key_counter = 0
+            print("listen_key is updated!")
+
+        # Printing header before sleeping
+        resp_type_pr = f'---- UTC time -------------------------------------- ' \
+                       f'{str(datetime.utcfromtimestamp(int(time.time()))):<20}' \
+                       f' ----'
+        print(f'\n{Tags.LightBlue}{resp_type_pr}{Tags.ResetAll}')
+        print(f'Waiting {loop_waiting} sec')
+        sleep(loop_waiting)
+
+        # Updating current_state
+        while_counter = 0
+        while while_counter < 6:
+            try:
+                spot_client.get_current_state()
+                spot_client.str_current_state()
+                if len(spot_client.current_state_data) > 0:
+                    sqlh.insert_from_dict('current_state', spot_client.current_state_data)
+
+                update_orders_db()
+                while_counter = 20
+
+            except Exception as _ex:
+                print("[ERROR] start_bot_logic > id_arg == 2 > ", _ex)
+                while_counter += 1
+                time.sleep(randint(1, 10))
+
+        renew_listen_key_counter += 1
+        print("renew_listen_key_counter: ", renew_listen_key_counter)
+
+
+def id_arg_3():
+    web_socket.stream_user_data()
+    renew_listen_key_counter = 0
+
+    while True:
+
+        if renew_listen_key_counter >= 15:
+            spot_client.renew_listen_key(spot_client.listen_key)
+            renew_listen_key_counter = 0
+            print("listen_key is updated!")
+
+        sleep(loop_waiting)
+        renew_listen_key_counter += 1
+
+
+def id_arg_4(db_name, db_dir):
+    web_socket.stream_execution_reports(db_name=db_name, db_dir=db_dir)
+
+    spot_client.get_current_state()
+    spot_client.str_current_state()
+    if len(spot_client.current_state_data) > 0:
+        sqlh.insert_from_dict('current_state', spot_client.current_state_data)
+
+    spot_client.get_exchange_info()
+    if len(spot_client.filters) > 0:
+        sqlh.insert_from_dict('filters', spot_client.filters)
+    else:
+        print("[ERROR] Can't get filters")
+        sys.exit(1)
+
+    # print("DEBUG")
+    # spot_client.cancel_all_new_orders()
+    # print("CLOSED")
+    # sleep(30)
+
+    update_orders_db()
+
+    renew_listen_key_counter = 0
+    while True:
+
+        # Mode base logic
+        print(f'{Tags.BackgroundLightYellow}{Tags.Black}'
+              f'\n      Scheduled if_buy'
+              f'{Tags.ResetAll}')
+        if_buy()
+
+        # Updating listen_key
+        if renew_listen_key_counter >= 15:
+            spot_client.renew_listen_key(spot_client.listen_key)
+            renew_listen_key_counter = 0
+            print("listen_key is updated!")
+
+        # Printing header before sleeping
+        resp_type_pr = f'---- UTC time -------------------------------------- ' \
+                       f'{str(datetime.utcfromtimestamp(int(time.time()))):<20}' \
+                       f' ----'
+        print(f'\n{Tags.LightBlue}{resp_type_pr}{Tags.ResetAll}')
+        print(f'Waiting {loop_waiting} sec')
+        sleep(loop_waiting)
+
+        # Updating current_state
+        while_counter = 0
+        while while_counter < 6:
+            try:
+                spot_client.get_current_state()
+                spot_client.str_current_state()
+                if len(spot_client.current_state_data) > 0:
+                    sqlh.insert_from_dict('current_state', spot_client.current_state_data)
+
+                update_orders_db()
+                while_counter = 20
+
+            except Exception as _ex:
+                print("[ERROR] start_bot_logic > id_arg == 4 > ", _ex)
+                while_counter += 1
+                time.sleep(randint(1, 10))
+
+        renew_listen_key_counter += 1
+        print("renew_listen_key_counter: ", renew_listen_key_counter)
+
+
+def id_arg_5():
+    web_socket.stream_trades()
+
+    while True:
+        sleep(loop_waiting)
+
+
+def id_arg_6():
+    web_socket.stream_agg_trades()
+
+    while True:
+        sleep(5)
+        print()
+
+
+def id_arg_7():
+    with open('getting_data/symbols.txt', 'r') as f:
+        symbols_list_form_file = f.read()
+        symbols_list_form_file = [x.strip("[',]").strip() for x in symbols_list_form_file.split(' ')]
+
+    # Creating symbol pairs list
+    symbols_list = []
+    for symbol in symbols_list_form_file:
+        symbol += "USDT"
+        symbols_list.append(symbol)
+
+    # Getting filters
+    filters_list = []
+    for symbol in symbols_list:
+        try:
+            filters_list.append(spot_client.get_exchange_info(symbol))
+        except ClientError as _ex:
+            print(f"\n{Tags.LightYellow}[WARNING] Getting filters > {_ex.error_message} > "
+                  f"{symbol} is removed from the symbol_list{Tags.ResetAll}")
+            symbols_list.remove(symbol)
+
+    # Creating streams
+    for symbol in symbols_list:
+        try:
+            stream_id = randint(1, 99999)
+            print(f"Stream: {symbol}; ID: {stream_id}")
+            web_socket.kline_output_key = False
+            web_socket.stream_kline_history(symbol=symbol, stream_id=stream_id)
+            sleep(0.3)
+        except ClientError as _ex:
+            print(f"\n{Tags.LightYellow}[WARNING] Creating streams > {_ex.error_message} > "
+                  f"{symbol} is removed from the symbol_list{Tags.ResetAll}")
+            symbols_list.remove(symbol)
+
+    # Getting 1h klines
+    kline_1h_list = {}
+    for symbol in symbols_list:
+        try:
+            kline_1h = spot_client.get_kline(
+                symbol=symbol,
+                interval='1m',
+                limit=60,
+                output_key=True,
+                if_sum=True
+            )
+            kline_1h_list.update({symbol: kline_1h})
+            web_socket.kline_history[symbol] = kline_1h['klines']
+            sleep(0.3)
+        except ClientError as _ex:
+            print(f"\n{Tags.LightYellow}[WARNING] Getting 24h klines > {_ex.error_message} > "
+                  f"{symbol} is removed from the symbol_list{Tags.ResetAll}")
+            symbols_list.remove(symbol)
+
+    # The base mode logic
+    while True:
+
+        # Checking if symbol is ready to trade process
+        for symbol in symbols_list:
+            checking_symbol_history(symbol)
+            break
+
+        # Printing header before sleeping
+        resp_type_pr = f'---- UTC time -------------------------------------- ' \
+                       f'{str(datetime.utcfromtimestamp(int(time.time()))):<20}' \
+                       f' ----'
+        print(f'\n{Tags.LightBlue}{resp_type_pr}{Tags.ResetAll}')
+        print(f'Waiting {loop_waiting} sec')
+        sleep(loop_waiting)
 
 
 def start_bot_logic():
@@ -484,76 +836,7 @@ def start_bot_logic():
         sqlh.create_all_tables(tables.create_all_tables)
 
         try:
-            web_socket.stream_execution_reports(db_name=db_name, db_dir=base_path)
-            web_socket.kline_output_key = False
-            web_socket.stream_kline()
-
-            spot_client.get_current_state()
-            spot_client.str_current_state()
-            if len(spot_client.current_state_data) > 0:
-                sqlh.insert_from_dict('current_state', spot_client.current_state_data)
-
-            spot_client.get_exchange_info()
-            if len(spot_client.filters) > 0:
-                sqlh.insert_from_dict('filters', spot_client.filters)
-            else:
-                print("[ERROR] Can't get filters")
-                sys.exit(1)
-
-            # Getting 24h kline
-            spot_client.get_kline(interval='1h', limit=24, output_key=True, if_sum=True)
-
-            update_orders_db()
-
-            # Waiting for first kline
-            if web_socket.kline_last is None:
-                print("Waiting for first kline:")
-                while web_socket.kline_last is not None:
-                    sleep(1)
-                    print(".", end='')
-
-            renew_listen_key_counter = 0
-            while True:
-                # Mode base logic
-                print(f'{Tags.BackgroundLightYellow}{Tags.Black}'
-                      f'\n      Scheduled if_buy_kline'
-                      f'{Tags.ResetAll}')
-                if_buy_kline()
-
-                # Updating listen_key
-                if renew_listen_key_counter >= 15:
-                    spot_client.renew_listen_key(spot_client.listen_key)
-                    renew_listen_key_counter = 0
-                    print("listen_key is updated!")
-
-                # Printing header before sleeping
-                resp_type_pr = f'---- UTC time -------------------------------------- ' \
-                               f'{str(datetime.utcfromtimestamp(int(time.time()))):<20}' \
-                               f' ----'
-                print(f'\n{Tags.LightBlue}{resp_type_pr}{Tags.ResetAll}')
-                print(f'Waiting {loop_waiting} sec')
-                sleep(loop_waiting)
-
-                # Updating current_state
-                while_counter = 0
-                while while_counter < 6:
-                    try:
-                        spot_client.get_current_state()
-                        spot_client.str_current_state()
-                        if len(spot_client.current_state_data) > 0:
-                            sqlh.insert_from_dict('current_state', spot_client.current_state_data)
-
-                        update_orders_db()
-                        while_counter = 20
-
-                    except Exception as _ex:
-                        print("[ERROR] start_bot_logic > id_arg == 2 > ", _ex)
-                        while_counter += 1
-                        time.sleep(randint(1, 10))
-
-                renew_listen_key_counter += 1
-                print("renew_listen_key_counter: ", renew_listen_key_counter)
-
+            id_arg_2(db_name=db_name, db_dir=base_path)
         except KeyboardInterrupt:
             ...
         finally:
@@ -585,19 +868,7 @@ def start_bot_logic():
         )
 
         try:
-            web_socket.stream_user_data()
-
-            renew_listen_key_counter = 0
-            while True:
-
-                if renew_listen_key_counter >= 15:
-                    spot_client.renew_listen_key(spot_client.listen_key)
-                    renew_listen_key_counter = 0
-                    print("listen_key is updated!")
-
-                sleep(loop_waiting)
-                renew_listen_key_counter += 1
-
+            id_arg_3()
         except KeyboardInterrupt:
             ...
         finally:
@@ -630,70 +901,7 @@ def start_bot_logic():
         sqlh.create_all_tables(tables.create_all_tables)
 
         try:
-            web_socket.stream_execution_reports(db_name=db_name, db_dir=base_path)
-
-            spot_client.get_current_state()
-            spot_client.str_current_state()
-            if len(spot_client.current_state_data) > 0:
-                sqlh.insert_from_dict('current_state', spot_client.current_state_data)
-
-            spot_client.get_exchange_info()
-            if len(spot_client.filters) > 0:
-                sqlh.insert_from_dict('filters', spot_client.filters)
-            else:
-                print("[ERROR] Can't get filters")
-                sys.exit(1)
-
-            # print("DEBUG")
-            # spot_client.cancel_all_new_orders()
-            # print("CLOSED")
-            # sleep(30)
-
-            update_orders_db()
-
-            renew_listen_key_counter = 0
-            while True:
-
-                # Mode base logic
-                print(f'{Tags.BackgroundLightYellow}{Tags.Black}'
-                      f'\n      Scheduled if_buy'
-                      f'{Tags.ResetAll}')
-                if_buy()
-
-                # Updating listen_key
-                if renew_listen_key_counter >= 15:
-                    spot_client.renew_listen_key(spot_client.listen_key)
-                    renew_listen_key_counter = 0
-                    print("listen_key is updated!")
-
-                # Printing header before sleeping
-                resp_type_pr = f'---- UTC time -------------------------------------- ' \
-                               f'{str(datetime.utcfromtimestamp(int(time.time()))):<20}' \
-                               f' ----'
-                print(f'\n{Tags.LightBlue}{resp_type_pr}{Tags.ResetAll}')
-                print(f'Waiting {loop_waiting} sec')
-                sleep(loop_waiting)
-
-                # Updating current_state
-                while_counter = 0
-                while while_counter < 6:
-                    try:
-                        spot_client.get_current_state()
-                        spot_client.str_current_state()
-                        if len(spot_client.current_state_data) > 0:
-                            sqlh.insert_from_dict('current_state', spot_client.current_state_data)
-
-                        update_orders_db()
-                        while_counter = 20
-
-                    except Exception as _ex:
-                        print("[ERROR] start_bot_logic > id_arg == 4 > ", _ex)
-                        while_counter += 1
-                        time.sleep(randint(1, 10))
-
-                renew_listen_key_counter += 1
-                print("renew_listen_key_counter: ", renew_listen_key_counter)
-
+            id_arg_4(db_name=db_name, db_dir=base_path)
         except KeyboardInterrupt:
             ...
         finally:
@@ -718,12 +926,7 @@ def start_bot_logic():
         )
 
         try:
-            web_socket.stream_trades()
-
-            while True:
-
-                sleep(loop_waiting)
-
+            id_arg_5()
         except KeyboardInterrupt:
             ...
         finally:
@@ -746,12 +949,7 @@ def start_bot_logic():
         )
 
         try:
-            web_socket.stream_agg_trades()
-
-            while True:
-                sleep(5)
-                print()
-
+            id_arg_6()
         except KeyboardInterrupt:
             ...
         finally:
@@ -779,74 +977,7 @@ def start_bot_logic():
         )
 
         try:
-            with open('getting_data/symbols.txt', 'r') as f:
-                symbols_list_form_file = f.read()
-                symbols_list_form_file = [x.strip("[',]").strip() for x in symbols_list_form_file.split(' ')]
-
-            # Creating symbol pairs list
-            symbols_list = []
-            for symbol in symbols_list_form_file:
-                symbol += "USDT"
-                symbols_list.append(symbol)
-
-            # Getting filters
-            filters_list = []
-            for symbol in symbols_list:
-                try:
-                    filters_list.append(spot_client.get_exchange_info(symbol))
-                except ClientError as _ex:
-                    print(f"\n{Tags.LightYellow}[WARNING] Getting filters > {_ex.error_message} > "
-                          f"{symbol} is removed from the symbol_list{Tags.ResetAll}")
-                    symbols_list.remove(symbol)
-
-            # Creating streams
-            for symbol in symbols_list:
-                try:
-                    stream_id = randint(1, 99999)
-                    print(f"Stream: {symbol}; ID: {stream_id}")
-                    web_socket.kline_output_key = False
-                    web_socket.stream_kline_history(symbol=symbol, stream_id=stream_id)
-                    sleep(0.3)
-                except ClientError as _ex:
-                    print(f"\n{Tags.LightYellow}[WARNING] Creating streams > {_ex.error_message} > "
-                          f"{symbol} is removed from the symbol_list{Tags.ResetAll}")
-                    symbols_list.remove(symbol)
-
-            # Getting 1h klines
-            kline_1h_list = {}
-            for symbol in symbols_list:
-                try:
-                    kline_1h = spot_client.get_kline(
-                        symbol=symbol,
-                        interval='1m',
-                        limit=60,
-                        output_key=True,
-                        if_sum=True
-                    )
-                    kline_1h_list.update({symbol: kline_1h})
-                    web_socket.kline_history[symbol] = kline_1h['klines']
-                    sleep(0.3)
-                except ClientError as _ex:
-                    print(f"\n{Tags.LightYellow}[WARNING] Getting 24h klines > {_ex.error_message} > "
-                          f"{symbol} is removed from the symbol_list{Tags.ResetAll}")
-                    symbols_list.remove(symbol)
-
-            # The base mode logic
-            while True:
-
-                # Checking if symbol is ready to trade process
-                for symbol in symbols_list:
-                    checking_symbol_history(symbol)
-                    break
-
-                # Printing header before sleeping
-                resp_type_pr = f'---- UTC time -------------------------------------- ' \
-                               f'{str(datetime.utcfromtimestamp(int(time.time()))):<20}' \
-                               f' ----'
-                print(f'\n{Tags.LightBlue}{resp_type_pr}{Tags.ResetAll}')
-                print(f'Waiting {loop_waiting} sec')
-                sleep(loop_waiting)
-
+            id_arg_7()
         except KeyboardInterrupt:
             ...
         finally:

@@ -112,161 +112,133 @@ class SpotClient(Spot):
                 limit=limit
             )
 
-        # if limit > 1:
-        if True:
-            response_list = []
-            response_data = {
+        response_list = []
+        response_data = {
+            "symbol": symbol,
+            "start_time": response[0][0],
+            "start_time_utc": str(datetime.utcfromtimestamp(int(int(response[0][0])) // 1000)),
+            "close_time": response[-1][6],
+            "close_time_utc": str(datetime.utcfromtimestamp(int(int(response[-1][6])) // 1000)),
+            "interval": interval,
+            "open_price": response[0][1],
+            "close_price": response[-1][4],
+            "high_price": response[0][2],
+            "low_price": response[0][3],
+            "number_of_trades": '0',
+            "all_origQty": '0',
+            "all_cost": '0',
+            "buy_origQty": '0',
+            "buy_cost": '0',
+            "sell_origQty": '0',
+            "sell_cost": '0',
+        }
+        for response_item in response:
+            item = {
                 "symbol": symbol,
-                "start_time": response[0][0],
-                "start_time_utc": str(datetime.utcfromtimestamp(int(int(response[0][0])) // 1000)),
-                "close_time": response[-1][6],
-                "close_time_utc": str(datetime.utcfromtimestamp(int(int(response[-1][6])) // 1000)),
+                "start_time": response_item[0],
+                "start_time_utc": str(datetime.utcfromtimestamp(int(int(response_item[0])) // 1000)),
+                "close_time": response_item[6],
+                "close_time_utc": str(datetime.utcfromtimestamp(int(int(response_item[6])) // 1000)),
                 "interval": interval,
-                "open_price": response[0][1],
-                "close_price": response[-1][4],
-                "high_price": response[0][2],
-                "low_price": response[0][3],
-                "number_of_trades": '0',
-                "all_origQty": '0',
-                "all_cost": '0',
-                "buy_origQty": '0',
-                "buy_cost": '0',
-                "sell_origQty": '0',
-                "sell_cost": '0',
+                "open_price": response_item[1],
+                "close_price": response_item[4],
+                "high_price": response_item[2],
+                "low_price": response_item[3],
+                "number_of_trades": response_item[8],
+                "all_origQty": response_item[5],
+                "all_cost": response_item[7],
+                "buy_origQty": response_item[9],
+                "buy_cost": response_item[10],
+                "sell_origQty": (Decimal(str(response_item[5])) - Decimal(str(response_item[9]))).quantize(
+                    Decimal('0.00000000'),
+                    rounding=ROUND_HALF_UP
+                ),
+                "sell_cost": (Decimal(str(response_item[7])) - Decimal(str(response_item[10]))).quantize(
+                    Decimal('0.00000000'),
+                    rounding=ROUND_HALF_UP
+                ),
             }
-            for response_item in response:
-                item = {
-                    "symbol": symbol,
-                    "start_time": response_item[0],
-                    "start_time_utc": str(datetime.utcfromtimestamp(int(int(response_item[0])) // 1000)),
-                    "close_time": response_item[6],
-                    "close_time_utc": str(datetime.utcfromtimestamp(int(int(response_item[6])) // 1000)),
-                    "interval": interval,
-                    "open_price": response_item[1],
-                    "close_price": response_item[4],
-                    "high_price": response_item[2],
-                    "low_price": response_item[3],
-                    "number_of_trades": response_item[8],
-                    "all_origQty": response_item[5],
-                    "all_cost": response_item[7],
-                    "buy_origQty": response_item[9],
-                    "buy_cost": response_item[10],
-                    "sell_origQty": (Decimal(str(response_item[5])) - Decimal(str(response_item[9]))).quantize(
-                        Decimal('0.00000000'),
-                        rounding=ROUND_HALF_UP
-                    ),
-                    "sell_cost": (Decimal(str(response_item[7])) - Decimal(str(response_item[10]))).quantize(
-                        Decimal('0.00000000'),
-                        rounding=ROUND_HALF_UP
-                    ),
-                }
-                response_list.append(item)
+            response_list.append(item)
 
-                if if_sum:
-                    if Decimal(item['high_price']) > Decimal(response_data['high_price']):
-                        response_data.update({"high_price": item['high_price']})
+            if if_sum:
+                if Decimal(item['high_price']) > Decimal(response_data['high_price']):
+                    response_data.update({"high_price": item['high_price']})
 
-                    if Decimal(item['low_price']) < Decimal(response_data['low_price']):
-                        response_data.update({"low_price": item['low_price']})
+                if Decimal(item['low_price']) < Decimal(response_data['low_price']):
+                    response_data.update({"low_price": item['low_price']})
 
-                    response_data.update(
-                        {
-                            "number_of_trades": int(response_data['number_of_trades']) + int(item['number_of_trades'])
-                        }
-                    )
+                response_data.update(
+                    {
+                        "number_of_trades": int(response_data['number_of_trades']) + int(item['number_of_trades'])
+                    }
+                )
 
-                    response_data.update(
-                        {
-                            "all_origQty": (Decimal(str(response_data['all_origQty'])) +
-                                            Decimal(str(item['all_origQty']))).quantize(
-                                Decimal('0.00000000'),
-                                rounding=ROUND_HALF_UP
-                            ),
-                        }
-                    )
+                response_data.update(
+                    {
+                        "all_origQty": (Decimal(str(response_data['all_origQty'])) +
+                                        Decimal(str(item['all_origQty']))).quantize(
+                            Decimal('0.00000000'),
+                            rounding=ROUND_HALF_UP
+                        ),
+                    }
+                )
 
-                    response_data.update(
-                        {
-                            "all_cost": (Decimal(str(response_data['all_cost'])) +
-                                         Decimal(str(item['all_cost']))).quantize(
-                                Decimal('0.00000000'),
-                                rounding=ROUND_HALF_UP
-                            ),
-                        }
-                    )
+                response_data.update(
+                    {
+                        "all_cost": (Decimal(str(response_data['all_cost'])) +
+                                     Decimal(str(item['all_cost']))).quantize(
+                            Decimal('0.00000000'),
+                            rounding=ROUND_HALF_UP
+                        ),
+                    }
+                )
 
-                    response_data.update(
-                        {
-                            "buy_origQty": (Decimal(str(response_data['buy_origQty'])) +
-                                            Decimal(str(item['buy_origQty']))).quantize(
-                                Decimal('0.00000000'),
-                                rounding=ROUND_HALF_UP
-                            ),
-                        }
-                    )
+                response_data.update(
+                    {
+                        "buy_origQty": (Decimal(str(response_data['buy_origQty'])) +
+                                        Decimal(str(item['buy_origQty']))).quantize(
+                            Decimal('0.00000000'),
+                            rounding=ROUND_HALF_UP
+                        ),
+                    }
+                )
 
-                    response_data.update(
-                        {
-                            "buy_cost": (Decimal(str(response_data['buy_cost'])) +
-                                         Decimal(str(item['buy_cost']))).quantize(
-                                Decimal('0.00000000'),
-                                rounding=ROUND_HALF_UP
-                            ),
-                        }
-                    )
+                response_data.update(
+                    {
+                        "buy_cost": (Decimal(str(response_data['buy_cost'])) +
+                                     Decimal(str(item['buy_cost']))).quantize(
+                            Decimal('0.00000000'),
+                            rounding=ROUND_HALF_UP
+                        ),
+                    }
+                )
 
-                    response_data.update(
-                        {
-                            "sell_origQty": (Decimal(str(response_data['sell_origQty'])) +
-                                             Decimal(str(item['sell_origQty']))).quantize(
-                                Decimal('0.00000000'),
-                                rounding=ROUND_HALF_UP
-                            ),
-                        }
-                    )
+                response_data.update(
+                    {
+                        "sell_origQty": (Decimal(str(response_data['sell_origQty'])) +
+                                         Decimal(str(item['sell_origQty']))).quantize(
+                            Decimal('0.00000000'),
+                            rounding=ROUND_HALF_UP
+                        ),
+                    }
+                )
 
-                    response_data.update(
-                        {
-                            "sell_cost": (Decimal(str(response_data['sell_cost'])) +
-                                          Decimal(str(item['sell_cost']))).quantize(
-                                Decimal('0.00000000'),
-                                rounding=ROUND_HALF_UP
-                            ),
-                        }
-                    )
+                response_data.update(
+                    {
+                        "sell_cost": (Decimal(str(response_data['sell_cost'])) +
+                                      Decimal(str(item['sell_cost']))).quantize(
+                            Decimal('0.00000000'),
+                            rounding=ROUND_HALF_UP
+                        ),
+                    }
+                )
+
+            response_data.update({'amount': len(response)})
 
             if if_sum:
                 result = {'sum': response_data, 'klines': response_list}
             else:
                 result = {'sum': None, 'klines': response_list}
-
-        # else:
-        #     response_data = {
-        #         "symbol": symbol,
-        #         "start_time": response[0][0],
-        #         "start_time_utc": str(datetime.utcfromtimestamp(int(int(response[0][0])) // 1000)),
-        #         "close_time": response[0][6],
-        #         "close_time_utc": str(datetime.utcfromtimestamp(int(int(response[0][6])) // 1000)),
-        #         "interval": interval,
-        #         "open_price": response[0][1],
-        #         "close_price": response[0][4],
-        #         "high_price": response[0][2],
-        #         "low_price": response[0][3],
-        #         "number_of_trades": response[0][8],
-        #         "all_origQty": response[0][5],
-        #         "all_cost": response[0][7],
-        #         "buy_origQty": response[0][9],
-        #         "buy_cost": response[0][10],
-        #         "sell_origQty": (Decimal(str(response[0][5])) - Decimal(str(response[0][9]))).quantize(
-        #             Decimal('0.00000000'),
-        #             rounding=ROUND_HALF_UP
-        #         ),
-        #         "sell_cost": (Decimal(str(response[0][7])) - Decimal(str(response[0][10]))).quantize(
-        #             Decimal('0.00000000'),
-        #             rounding=ROUND_HALF_UP
-        #         ),
-        #     }
-        #     result = response_data
 
         if output_key:
             output = f"[{response_data['symbol']}] " \

@@ -9,23 +9,24 @@ with open('getting_data/symbols.txt', 'r') as f:
     symbols_list = f.read()
     symbols_list = [x.strip("[',]").strip() for x in symbols_list.split(' ')]
     print(symbols_list)
+    print(symbols_list[-10:])
     # for symbol in symbols_list:
     #     print(symbol)
 
 
-def shift(data_list):
-    to_app = "smthng"
-    if len(data_list) > 10:
-        data_list = [
-            x for x in data_list[1:]
-        ]
-    data_list.append(to_app)
-    print(data_list)
-    return data_list
-
-
-symbols_list = shift(symbols_list)
-symbols_list = shift(symbols_list)
+# def shift(data_list):
+#     to_app = "smthng"
+#     if len(data_list) > 10:
+#         data_list = [
+#             x for x in data_list[1:]
+#         ]
+#     data_list.append(to_app)
+#     print(data_list)
+#     return data_list
+#
+#
+# symbols_list = shift(symbols_list)
+# symbols_list = shift(symbols_list)
 
 # print(1_000_000 // 10 ** 6)
 
