@@ -5,7 +5,7 @@ import argparse
 import pandas as pd
 
 from binance.error import ClientError
-from decimal import Decimal, ROUND_HALF_UP, ROUND_UP
+from decimal import Decimal, ROUND_HALF_UP, ROUND_UP, localcontext
 from datetime import datetime
 from random import randint
 from time import sleep
@@ -23,7 +23,7 @@ sqlh: SQLiteHandler
 buy_div = 0.2  # sell_div = 1 - buy_div
 profit_percent = 0.3
 cost_limit = 160
-loop_waiting = (1 * 60) + 0
+loop_waiting = (0 * 60) + 30
 
 
 def create_buy_order():
@@ -241,13 +241,15 @@ def trade_process(custom_buy_div=None, custom_cost_limit=None):
         )
 
     quantity = (
-            Decimal(purchase_cost) / Decimal(spot_client.current_state_data['order_book_bid_current_price'])
-    ) // Decimal(spot_client.filters['LOT_SIZE_stepSize']) * Decimal(spot_client.filters['LOT_SIZE_stepSize']
-    ) + Decimal(spot_client.filters['LOT_SIZE_stepSize'])
+                       Decimal(purchase_cost) / Decimal(spot_client.current_state_data['order_book_bid_current_price'])
+               ) // Decimal(spot_client.filters['LOT_SIZE_stepSize']) * Decimal(spot_client.filters['LOT_SIZE_stepSize']
+                                                                                ) + Decimal(
+        spot_client.filters['LOT_SIZE_stepSize'])
 
     buy_cost = (
-            Decimal(buy_price) * Decimal(quantity)
-    ) // Decimal(spot_client.filters['PRICE_FILTER_tickSize']) * Decimal(spot_client.filters['PRICE_FILTER_tickSize'])
+                       Decimal(buy_price) * Decimal(quantity)
+               ) // Decimal(spot_client.filters['PRICE_FILTER_tickSize']) * Decimal(
+        spot_client.filters['PRICE_FILTER_tickSize'])
 
     sell_price = Decimal(
         Decimal(spot_client.current_state_data['order_book_bid_current_price']) *
@@ -255,8 +257,9 @@ def trade_process(custom_buy_div=None, custom_cost_limit=None):
     ) // Decimal(spot_client.filters['PRICE_FILTER_tickSize']) * Decimal(spot_client.filters['PRICE_FILTER_tickSize'])
 
     sell_cost = (
-            Decimal(sell_price) * Decimal(quantity)
-    ) // Decimal(spot_client.filters['PRICE_FILTER_tickSize']) * Decimal(spot_client.filters['PRICE_FILTER_tickSize'])
+                        Decimal(sell_price) * Decimal(quantity)
+                ) // Decimal(spot_client.filters['PRICE_FILTER_tickSize']) * Decimal(
+        spot_client.filters['PRICE_FILTER_tickSize'])
 
     buy_order_to_db = {
         "symbol": str(spot_client.symbol),
@@ -264,7 +267,7 @@ def trade_process(custom_buy_div=None, custom_cost_limit=None):
         "origQty": str(quantity),
         "cost": str(buy_cost),
         "side": str('BUY'),
-        "workingTime": int(time.time()*1000 // 1),
+        "workingTime": int(time.time() * 1000 // 1),
     }
     sell_order_to_db = {
         "symbol": str(spot_client.symbol),
@@ -272,7 +275,7 @@ def trade_process(custom_buy_div=None, custom_cost_limit=None):
         "origQty": str(quantity),
         "cost": str(sell_cost),
         "side": str('SELL'),
-        "workingTime": int(time.time()*1000 // 1),
+        "workingTime": int(time.time() * 1000 // 1),
     }
 
     sqlh.insert_from_dict('pending_orders', buy_order_to_db)
@@ -363,21 +366,46 @@ def if_buy_kline():
         new_order_from_pending_db(orders_in_process['orders_pending'])
     elif (float(web_socket.kline_last['all_cost']) > float(spot_client.last_kline['sum']["all_cost"]
                                                            ) / float(spot_client.last_kline['sum']["amount"])) and (
-        float(web_socket.kline_last['buy_cost']) > float(web_socket.kline_last["all_cost"]) * 0.6) and (
-        orders_in_process['orders_new_cost'] < cost_limit
+            float(web_socket.kline_last['buy_cost']) > float(web_socket.kline_last["all_cost"]) * 0.6) and (
+            orders_in_process['orders_new_cost'] < cost_limit
     ):
         print("\nUP > custom_buy_div=0.2")
         trade_process(custom_buy_div=0.2, custom_cost_limit=custom_cost_limit)
 
     elif (float(web_socket.kline_last['all_cost']) > float(spot_client.last_kline['sum']["all_cost"]) / 48 * 0.8) and (
-        float(web_socket.kline_last['sell_cost']) > float(web_socket.kline_last["all_cost"]) * 0.6) and (
-        orders_in_process['orders_new_cost'] < cost_limit
+            float(web_socket.kline_last['sell_cost']) > float(web_socket.kline_last["all_cost"]) * 0.6) and (
+            orders_in_process['orders_new_cost'] < cost_limit
     ):
         print("\nDOWN > custom_buy_div=0.8")
         trade_process(custom_buy_div=0.8, custom_cost_limit=custom_cost_limit)
 
 
 def kline_sum(klines):
+    """
+    return {
+        "symbol"\n
+        "start_time",\n
+        "start_time_utc",\n
+        "close_time",\n
+        "close_time_utc",\n
+        "interval",\n
+        "open_price",\n
+        "close_price",\n
+        "high_price",\n
+        "low_price",\n
+        "number_of_trades",\n
+        "all_origQty",\n
+        "all_cost",\n
+        "buy_origQty",\n
+        "buy_cost",\n
+        "sell_origQty",\n
+        "sell_cost",\n
+        "amount"
+    }
+
+    :param klines:
+    :return: dict
+    """
     sum_of_klines = {
         "symbol": klines[0]["symbol"],
         "start_time": klines[0]['start_time'],
@@ -474,17 +502,256 @@ def kline_sum(klines):
     return sum_of_klines
 
 
+def kline_params(kline, sum_kline):
+    """
+    return {
+        "changing",\n
+        "direction",\n
+        "volume_part",\n
+    }
+    :param kline: 
+    :param sum_kline: 
+    :return: 
+    """
+    kline_params = {}
+
+    with localcontext() as local_context:
+        # Setting precision of decimal calculations
+        local_context.prec = 8
+
+        # Changing
+        changing = (Decimal(kline["close_price"]) - Decimal(kline["open_price"])) / Decimal(kline["close_price"])
+        kline_params.update({"changing": changing})
+
+        # Direction
+        if changing < 0:
+            kline_params.update({"direction": 'DOWN'})
+            kline_params.update({"changing": -changing})
+        else:
+            kline_params.update({"direction": 'UP'})
+
+        # Volume part
+        volume_part = Decimal(kline["all_cost"]) * Decimal(sum_kline["amount"]) / Decimal(sum_kline["all_cost"])
+        kline_params.update({"volume_part": volume_part})
+
+    return kline_params
+
+
+def monitoring_symbol(sum_kline, filters, monitoring_time=60):
+    """
+    :param monitoring_time: int     | sec
+    :param filters:
+    :param sum_kline: kline_sum(klines)
+    :return:
+    """
+    symbol = sum_kline["symbol"]
+    print(f"\n{Tags.LightYellow}Start monitoring {symbol}{Tags.ResetAll}")
+
+    # Getting balance
+    current_state = spot_client.get_current_state(symbol, first_symbol=symbol[:-4], second_symbol=symbol[-4:])
+
+    # If I have enough quantity
+    with localcontext() as local_context:
+
+        # Setting precision of decimal calculations
+        local_context.prec = 8
+
+        min_quantity = Decimal(filters['MIN_NOTIONAL_minNotional']) * Decimal('1.1') / (
+            Decimal(current_state['order_book_bid_current_price']))
+
+        if_enough = min_quantity < Decimal(current_state['balance_first_symbol_free_value'])
+
+    counter_limit = monitoring_time // 2
+    not_ready = True
+    counter = 0
+    state_value = 0
+    while (counter < counter_limit) and not_ready:
+        counter += 1
+
+        # Getting klines with params
+        klines = spot_client.get_kline(
+            symbol=symbol,
+            interval="1m",
+            limit=3
+        )
+        third_kline = {"kline": klines['klines'][-3]}
+        third_kline.update(kline_params(third_kline["kline"], sum_kline))
+        second_kline = {"kline": klines['klines'][-2]}
+        second_kline.update(kline_params(second_kline["kline"], sum_kline))
+        last_kline = {"kline": klines['klines'][-1]}
+        last_kline.update(kline_params(last_kline["kline"], sum_kline))
+
+        # Conditions for starting operations
+        # Up
+        if (last_kline['direction'] == "UP") and (second_kline['direction'] == last_kline['direction']):
+
+            # Small body
+            if last_kline["changing"] < 0.001:
+
+                # Probably will change direction or changing will be near zero
+                if (second_kline['changing'] > 0.002) and (third_kline['changing'] > 0.002) and (
+                        third_kline['direction'] == "UP"):
+                    state_value = 0
+
+                # Probably will be growing or changing will be near zero
+                elif (second_kline['changing'] > 0.002) and (third_kline['changing'] > 0.002) and (
+                        third_kline['direction'] == "DOWN"):
+                    state_value = 20
+
+                # Probably changing will be near zero
+                elif (second_kline['changing'] < 0.002) or (third_kline['changing'] < 0.002):
+                    state_value = 0
+
+            # Still growing and bigger // good condition to buy
+            elif last_kline["changing"] > second_kline["changing"]:
+                state_value = 100
+
+            # Still growing but smaller // not bad condition to buy
+            elif last_kline["changing"] < second_kline["changing"]:
+                state_value = 80
+
+        # Down // only if I have some
+        elif (last_kline['direction'] == "DOWN") and (
+                second_kline['direction'] == last_kline['direction']) and if_enough:
+
+            # Small body
+            if last_kline["changing"] < 0.001:
+
+                # Probably will change direction or changing will be near zero
+                if (second_kline['changing'] > 0.002) and (third_kline['changing'] > 0.002) and (
+                        third_kline['direction'] == "DOWN"):
+                    state_value = 0
+
+                # Probably will be falling or changing will be near zero
+                elif (second_kline['changing'] > 0.002) and (third_kline['changing'] > 0.002) and (
+                        third_kline['direction'] == "UP"):
+                    state_value = -20
+
+                # Probably changing will be near zero
+                elif (second_kline['changing'] < 0.002) or (third_kline['changing'] < 0.002):
+                    state_value = 0
+
+            # Still falling and bigger // good condition to sell
+            elif last_kline["changing"] > second_kline["changing"]:
+                state_value = -100
+
+            # Still falling but smaller // not bad condition to sell
+            elif last_kline["changing"] < second_kline["changing"]:
+                state_value = -80
+
+        if (state_value > 70) or (state_value < -70):
+            not_ready = False
+
+        header = f"--- Monitoring time: {str(counter * 2):>4}s / {str(counter_limit * 2):>4}s | " \
+                 f"State value: {state_value} ------------"
+        orders_df = pd.DataFrame(
+            [last_kline, second_kline, third_kline],
+            columns=["changing", "direction", "volume_part"]
+        )
+        print(f'\n{Tags.LightBlue}{header}{Tags.ResetAll}\n{orders_df}')
+
+        sleep(2.1)
+
+    return state_value
+
+    # END // movement anchor
+
+    # END // movement anchor
+
+
 def checking_symbol_history(symbol):
     klines = web_socket.kline_history[symbol]
     sum_kline = kline_sum(klines)
 
-    # Counting amount of large volume of 15 last klines
-    amount_of_large_volume = 0
-    for kline in klines[-15:]:
-        if float(kline["all_cost"]) > float(sum_kline['all_cost']) / float(sum_kline['amount']):
-            amount_of_large_volume += 1
+    # Conditions
+    with localcontext() as local_context:
+
+        # Counting amount of large volume of 15 last klines
+        lv_ratio = "2.5"
+        amount_of_large_volumes = 0
+        sum_10_last_klines = kline_sum(klines[-10:])
+
+        if (
+                (Decimal(sum_kline['amount']) == Decimal("0")) or
+                (Decimal(sum_10_last_klines['amount']) == Decimal("0")) or
+                (Decimal(sum_10_last_klines['all_origQty']) == Decimal("0"))
+        ):
+            return -666
+
+        for kline in klines[-10:]:
+            if Decimal(kline["all_cost"]) > Decimal(sum_kline['all_cost']) * Decimal(lv_ratio) / Decimal(
+                    sum_kline['amount']):
+                amount_of_large_volumes += 1
+
+        # Setting precision of decimal calculations
+        local_context.prec = 8
+
+        # If amount of large volumes more than 4
+        if_large_volume = amount_of_large_volumes > 4
+
+        # If last klines have small amount of trades
+        smota_ratio = "0.5"
+        average_num_of_trades = Decimal(sum_kline['number_of_trades']) / Decimal(sum_kline['amount'])
+        average_last_num_of_trades = Decimal(sum_10_last_klines["number_of_trades"]) / Decimal(
+            sum_10_last_klines['amount'])
+        if_small_amount_of_trades_number = average_num_of_trades * Decimal(smota_ratio) > average_last_num_of_trades
+
+        # If order book has disbalance of orders' sides
+        sd_ratio = "0.65"
+        buy_quantity_part = Decimal(sum_10_last_klines['buy_origQty']) / Decimal(sum_10_last_klines['all_origQty'])
+        sell_quantity_part = Decimal(sum_10_last_klines['sell_origQty']) / Decimal(sum_10_last_klines['all_origQty'])
+        if_sides_disbalance = (1 - buy_quantity_part > Decimal(sd_ratio)) or (
+                1 - sell_quantity_part > Decimal(sd_ratio))
+
+        # If 2 last klines have large changing
+        changing_ratio = Decimal("0.25") / Decimal("100")
+        if_two_last_changing_is_large = False
+        for kline in klines[-2:]:
+            if (Decimal(kline['open_price']) - Decimal(kline['close_price'])) / Decimal(
+                    kline['open_price']) > changing_ratio:
+                if_two_last_changing_is_large = True
+            elif (Decimal(kline['close_price']) - Decimal(kline['open_price'])) / Decimal(
+                    kline['close_price']) > changing_ratio:
+                if_two_last_changing_is_large = True
+
+    output = f"Amount of large volumes: " \
+             f"{Tags.BackgroundDarkGray}{amount_of_large_volumes} > 4 (x{lv_ratio}){Tags.ResetAll}" \
+             f" -> {if_large_volume}" \
+             f"\nAverage NoT * {smota_ratio}: " \
+             f"{Tags.BackgroundDarkGray}{average_num_of_trades} > {average_last_num_of_trades}{Tags.ResetAll}" \
+             f" :Average last NoT -> {if_small_amount_of_trades_number}" \
+             f"\nChanging more then: " \
+             f"{Tags.BackgroundDarkGray}{changing_ratio * 100}%{Tags.ResetAll}" \
+             f" -> {if_two_last_changing_is_large}" \
+             f"\nbuy_quantity_part: " \
+             f"{Tags.BackgroundDarkGray}{buy_quantity_part} | {sell_quantity_part}{Tags.ResetAll}" \
+             f" :sell_quantity_part -> {if_sides_disbalance}"
+
+    # More preferable conditions are located above
+    if if_large_volume and if_small_amount_of_trades_number and if_two_last_changing_is_large and if_sides_disbalance:
+        print(f"\n{Tags.BackgroundLightYellow}{klines[0]['symbol']}{Tags.ResetAll}")
+        print(output)
+        return 20
+
+    elif if_two_last_changing_is_large and if_small_amount_of_trades_number and if_sides_disbalance:
+        print(f"\n{Tags.BackgroundRed}{klines[0]['symbol']}{Tags.ResetAll}")
+        print(output)
+        return 10
+
+    elif if_large_volume and if_sides_disbalance:
+        print(f"\n{Tags.BackgroundMagenta}{klines[0]['symbol']}{Tags.ResetAll}")
+        print(output)
+        return 0
+    else:
+        return -666
+
+    # END // movement anchor
+
+    # END // movement anchor
 
 
+# Base logic modes =======================================================================================
+# Base logic modes =======================================================================================
 def id_arg_1():
     pass
 
@@ -669,16 +936,17 @@ def id_arg_7():
         symbols_list.append(symbol)
 
     # Getting filters
-    filters_list = []
+    filters_list = {}
     for symbol in symbols_list:
         try:
-            filters_list.append(spot_client.get_exchange_info(symbol))
+            filters_list.update({symbol: spot_client.get_exchange_info(symbol)})
         except ClientError as _ex:
             print(f"\n{Tags.LightYellow}[WARNING] Getting filters > {_ex.error_message} > "
                   f"{symbol} is removed from the symbol_list{Tags.ResetAll}")
             symbols_list.remove(symbol)
 
     # Creating streams
+    print(f"\n{Tags.LightYellow}Creating streams{Tags.ResetAll}")
     for symbol in symbols_list:
         try:
             stream_id = randint(1, 99999)
@@ -692,6 +960,8 @@ def id_arg_7():
             symbols_list.remove(symbol)
 
     # Getting 1h klines
+    sleep(3)
+    print(f"\n{Tags.LightYellow}Getting 1h klines{Tags.ResetAll}")
     kline_1h_list = {}
     for symbol in symbols_list:
         try:
@@ -711,12 +981,43 @@ def id_arg_7():
             symbols_list.remove(symbol)
 
     # The base mode logic
+    # The cycle is for the base logic repeating every {loop_waiting} time
+    sleep(3)
+    print(f"\n{Tags.LightYellow}Starting the base mode logic{Tags.ResetAll}")
+    symbols_to_skip = []
     while True:
 
         # Checking if symbol is ready to trade process
+        checked_symbols = {}
         for symbol in symbols_list:
-            checking_symbol_history(symbol)
-            break
+            checked_symbols.update({symbol: checking_symbol_history(symbol)})
+
+        # Symbol operations
+        if 20 in checked_symbols.values():
+            for symbol in checked_symbols.keys():
+                if checked_symbols[symbol] == 20:
+                    symbol_state = monitoring_symbol(kline_1h_list[symbol]["sum"], filters_list[symbol])
+                    print(f"\n{Tags.BackgroundLightYellow}Symbol state: {symbol_state}{Tags.ResetAll}")
+                    break
+
+        elif 10 in checked_symbols.values():
+            for symbol in checked_symbols.keys():
+                if checked_symbols[symbol] == 10:
+                    symbol_state = monitoring_symbol(kline_1h_list[symbol]["sum"], filters_list[symbol])
+                    print(f"\n{Tags.BackgroundLightYellow}Symbol state: {symbol_state}{Tags.ResetAll}")
+                    break
+
+        elif 0 in checked_symbols.values():
+            for symbol in checked_symbols.keys():
+                if (checked_symbols[symbol] == 0) and (symbol not in symbols_to_skip):
+                    symbol_state = monitoring_symbol(
+                        kline_1h_list[symbol]["sum"],
+                        filters_list[symbol],
+                        monitoring_time=16
+                    )
+                    print(f"\n{Tags.BackgroundLightYellow}Symbol state: {symbol_state}{Tags.ResetAll}")
+                    if symbol_state != 0:
+                        break
 
         # Printing header before sleeping
         resp_type_pr = f'---- UTC time -------------------------------------- ' \
@@ -725,6 +1026,10 @@ def id_arg_7():
         print(f'\n{Tags.LightBlue}{resp_type_pr}{Tags.ResetAll}')
         print(f'Waiting {loop_waiting} sec')
         sleep(loop_waiting)
+
+    # END // movement anchor
+
+    # END // movement anchor
 
 
 def start_bot_logic():
@@ -981,8 +1286,8 @@ def start_bot_logic():
         except KeyboardInterrupt:
             ...
         finally:
+            print(f'\n{Tags.LightYellow}WebSocket stopping{Tags.ResetAll}')
             web_socket.stop()
-            print(f'\n{Tags.LightYellow}WebSocket is stopped{Tags.ResetAll}')
             print("Sleep 5 sec:")
             for counter in range(1, 6):
                 print('Sleep progress: ', end='')

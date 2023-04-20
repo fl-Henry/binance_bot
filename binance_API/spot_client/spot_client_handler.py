@@ -65,7 +65,38 @@ class SpotClient(Spot):
 
     def get_kline(self, symbol=None, interval='1d', limit=1, start_time=None, end_time=None, if_sum=False,
                   output_key=False):
-        """"""
+        """
+        return {
+            'sum': {kline},\n
+            'klines': list of {
+                "symbol"\n
+                "start_time"\n
+                "start_time_utc"\n
+                "close_time"\n
+                "close_time_utc"\n
+                "interval"\n
+                "open_price"\n
+                "close_price"\n
+                "high_price"\n
+                "low_price"\n
+                "number_of_trades"\n
+                "all_origQty"\n
+                "all_cost"\n
+                "buy_origQty"\n
+                "buy_cost"\n
+                "sell_origQty"\n
+                "sell_cost"\n
+            }
+        }\n
+        :param symbol:
+        :param interval:
+        :param limit:
+        :param start_time:
+        :param end_time:
+        :param if_sum:
+        :param output_key:
+        :return: [0] -> first; [-1] -> last
+        """
         """
             [                                                          [
               [                                                          [
@@ -274,6 +305,22 @@ class SpotClient(Spot):
 
     def get_exchange_info(self, symbol=None):
         """
+        return {
+            "serverTime"\n
+            "symbol"\n
+            "PRICE_FILTER_filterType"\n
+            "PRICE_FILTER_minPrice"\n
+            "PRICE_FILTER_maxPrice"\n
+            "PRICE_FILTER_tickSize"\n
+            "LOT_SIZE_filterType"\n
+            "LOT_SIZE_minQty"\n
+            "LOT_SIZE_maxQty"\n
+            "LOT_SIZE_stepSize"\n
+            "MIN_NOTIONAL_filterType"\n
+            "MIN_NOTIONAL_minNotional"\n
+            "MIN_NOTIONAL_applyToMarket"\n
+            "MIN_NOTIONAL_avgPriceMins"\n
+            }
         """
         if symbol is None:
             symbol = self.symbol
@@ -290,18 +337,18 @@ class SpotClient(Spot):
             self.filters = {
                 "serverTime": symbol_exchange_info['serverTime'],
                 "symbol": symbol_exchange_info['symbols'][0]['symbol'],
-                'PRICE_FILTER_filterType': symbol_exchange_info['symbols'][0]['filters'][0]["filterType"],
-                'PRICE_FILTER_minPrice': symbol_exchange_info['symbols'][0]['filters'][0]["minPrice"],
-                'PRICE_FILTER_maxPrice': symbol_exchange_info['symbols'][0]['filters'][0]["maxPrice"],
-                'PRICE_FILTER_tickSize': symbol_exchange_info['symbols'][0]['filters'][0]["tickSize"],
-                'LOT_SIZE_filterType': symbol_exchange_info['symbols'][0]['filters'][1]["filterType"],
-                'LOT_SIZE_minQty': symbol_exchange_info['symbols'][0]['filters'][1]["minQty"],
-                'LOT_SIZE_maxQty': symbol_exchange_info['symbols'][0]['filters'][1]["maxQty"],
-                'LOT_SIZE_stepSize': symbol_exchange_info['symbols'][0]['filters'][1]["stepSize"],
-                'MIN_NOTIONAL_filterType': symbol_exchange_info['symbols'][0]['filters'][2]["filterType"],
-                'MIN_NOTIONAL_minNotional': symbol_exchange_info['symbols'][0]['filters'][2]["minNotional"],
-                'MIN_NOTIONAL_applyToMarket': symbol_exchange_info['symbols'][0]['filters'][2]["applyToMarket"],
-                'MIN_NOTIONAL_avgPriceMins': symbol_exchange_info['symbols'][0]['filters'][2]["avgPriceMins"],
+                "PRICE_FILTER_filterType": symbol_exchange_info['symbols'][0]['filters'][0]["filterType"],
+                "PRICE_FILTER_minPrice": symbol_exchange_info['symbols'][0]['filters'][0]["minPrice"],
+                "PRICE_FILTER_maxPrice": symbol_exchange_info['symbols'][0]['filters'][0]["maxPrice"],
+                "PRICE_FILTER_tickSize": symbol_exchange_info['symbols'][0]['filters'][0]["tickSize"],
+                "LOT_SIZE_filterType": symbol_exchange_info['symbols'][0]['filters'][1]["filterType"],
+                "LOT_SIZE_minQty": symbol_exchange_info['symbols'][0]['filters'][1]["minQty"],
+                "LOT_SIZE_maxQty": symbol_exchange_info['symbols'][0]['filters'][1]["maxQty"],
+                "LOT_SIZE_stepSize": symbol_exchange_info['symbols'][0]['filters'][1]["stepSize"],
+                "MIN_NOTIONAL_filterType": symbol_exchange_info['symbols'][0]['filters'][2]["filterType"],
+                "MIN_NOTIONAL_minNotional": symbol_exchange_info['symbols'][0]['filters'][2]["minNotional"],
+                "MIN_NOTIONAL_applyToMarket": symbol_exchange_info['symbols'][0]['filters'][2]["applyToMarket"],
+                "MIN_NOTIONAL_avgPriceMins": symbol_exchange_info['symbols'][0]['filters'][2]["avgPriceMins"],
             }
         except Exception as _ex:
             print(_ex)
@@ -330,10 +377,38 @@ class SpotClient(Spot):
         price = depth.get(side)[-1][0]
         return price
 
-    def get_current_state(self):
+    def get_current_state(self, symbol=None, first_symbol=None, second_symbol=None):
+        """
+        return {
+            'order_book_bid_current_price'\n
+            'order_book_bid_current_quantity'\n
+            'order_book_ask_current_price'\n
+            'order_book_ask_current_quantity'\n
+            'balance_free'\n
+            'balance_locked'\n
+            'balance_sum'\n
+            'balance_first_symbol'\n
+            'balance_first_symbol_free_value'\n
+            'balance_first_symbol_locked_value'\n
+            'balance_second_symbol'\n
+            'balance_second_symbol_free_value'\n
+            'balance_second_symbol_locked_value'\n
+            'time'\n
+            }
+        :param symbol:
+        :param first_symbol:
+        :param second_symbol:
+        :return:
+        """
+        if symbol is None:
+            symbol = self.symbol
+        if first_symbol is None:
+            first_symbol = self.first_symbol
+        if second_symbol is None:
+            second_symbol = self.second_symbol
 
         # getting the first bid and the first ask
-        current_depth = self.depth(symbol=self.symbol, limit=1)
+        current_depth = self.depth(symbol=symbol, limit=1)
         symbol_bid_price = current_depth['bids'][-1][0]
         symbol_bid_quantity = current_depth['bids'][-1][1]
         symbol_ask_price = current_depth['asks'][-1][0]
@@ -346,10 +421,10 @@ class SpotClient(Spot):
         second_symbol_free_value, first_symbol_free_value = 0, 0
         second_symbol_locked_value, first_symbol_locked_value = 0, 0
         for item in balance:
-            if item['asset'] == self.first_symbol:
+            if item['asset'] == first_symbol:
                 first_symbol_free_value = str(Decimal(item['free']))
                 first_symbol_locked_value = str(Decimal(item['locked']))
-            if item['asset'] == self.second_symbol:
+            if item['asset'] == second_symbol:
                 second_symbol_free_value = item['free']
                 second_symbol_locked_value = item['locked']
 
@@ -371,10 +446,10 @@ class SpotClient(Spot):
             'balance_free': free,
             'balance_locked': locked,
             'balance_sum': str(Decimal(free) + Decimal(locked)),
-            'balance_first_symbol': self.first_symbol,
+            'balance_first_symbol': first_symbol,
             'balance_first_symbol_free_value': first_symbol_free_value,
             'balance_first_symbol_locked_value': first_symbol_locked_value,
-            'balance_second_symbol': self.second_symbol,
+            'balance_second_symbol': second_symbol,
             'balance_second_symbol_free_value': second_symbol_free_value,
             'balance_second_symbol_locked_value': second_symbol_locked_value,
             'time': int(time.time()*1000 // 1)
@@ -546,5 +621,5 @@ if __name__ == '__main__':
         # print(now)
         # print(datetime.utcfromtimestamp(start_time / 1000))
         # print(start_time)
-        r = spot_client.get_kline(interval='1h', limit=24, output_key=True)
-        # print(r)
+        r = spot_client.get_kline(interval='1h', limit=24, output_key=True, if_sum=True)
+        print(r)

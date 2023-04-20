@@ -5,11 +5,23 @@ import datetime
 from decimal import Decimal, getcontext, ROUND_CEILING, ROUND_UP, ROUND_HALF_UP, ROUND_HALF_EVEN, ROUND_HALF_DOWN
 import time
 
-with open('getting_data/symbols.txt', 'r') as f:
-    symbols_list = f.read()
-    symbols_list = [x.strip("[',]").strip() for x in symbols_list.split(' ')]
-    print(symbols_list)
-    print(symbols_list[-10:])
+symbol = "CUSTOMUSDT"
+print(symbol[:-4])
+print(symbol[-4:])
+
+# blank_dict = {"klines": None}
+# if blank_dict["klines"] is None:
+#     print("blank")
+# else:
+#     print(blank_dict)
+
+# with open('getting_data/symbols.txt', 'r') as f:
+#     symbols_list = f.read()
+#     symbols_list = [x.strip("[',]").strip() for x in symbols_list.split(' ')]
+#     print(symbols_list)
+#     print(symbols_list[-10:])
+#     print(symbols_list[-1])
+#     print(symbols_list[-2])
     # for symbol in symbols_list:
     #     print(symbol)
 
