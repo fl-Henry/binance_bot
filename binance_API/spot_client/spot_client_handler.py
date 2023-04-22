@@ -304,6 +304,17 @@ class SpotClient(Spot):
         self.last_kline = result
         return result
 
+    @staticmethod
+    def parse_filters(all_symbols_filters, in_list: list = None):
+        filters = {}
+        if in_list is None:
+            in_list = ["PERCENT_PRICE_BY_SIDE", "LOT_SIZE", "PRICE_FILTER", "MIN_NOTIONAL"]
+        for counter in range(len(all_symbols_filters)):
+            if str(all_symbols_filters[counter]["filterType"]) in in_list:
+                for key in all_symbols_filters[counter].keys():
+                    filters.update({f"{all_symbols_filters[counter]['filterType']}_{key}": all_symbols_filters[counter][key]})
+        return filters
+
     def get_exchange_info(self, symbol=None):
         """
         return {
@@ -327,7 +338,6 @@ class SpotClient(Spot):
             symbol = self.symbol
 
         symbol_exchange_info = self.exchange_info(symbol=symbol)
-
         try:
             if self.test_key:
                 symbol_exchange_info['symbols'][0]['filters'][2]["filterType"] = 'MIN_NOTIONAL'
@@ -338,36 +348,61 @@ class SpotClient(Spot):
             self.filters = {
                 "serverTime": symbol_exchange_info['serverTime'],
                 "symbol": symbol_exchange_info['symbols'][0]['symbol'],
-                "PRICE_FILTER_filterType": symbol_exchange_info['symbols'][0]['filters'][0]["filterType"],
-                "PRICE_FILTER_minPrice": symbol_exchange_info['symbols'][0]['filters'][0]["minPrice"],
-                "PRICE_FILTER_maxPrice": symbol_exchange_info['symbols'][0]['filters'][0]["maxPrice"],
-                "PRICE_FILTER_tickSize": symbol_exchange_info['symbols'][0]['filters'][0]["tickSize"],
-                "LOT_SIZE_filterType": symbol_exchange_info['symbols'][0]['filters'][1]["filterType"],
-                "LOT_SIZE_minQty": symbol_exchange_info['symbols'][0]['filters'][1]["minQty"],
-                "LOT_SIZE_maxQty": symbol_exchange_info['symbols'][0]['filters'][1]["maxQty"],
-                "LOT_SIZE_stepSize": symbol_exchange_info['symbols'][0]['filters'][1]["stepSize"],
             }
-            if str(symbol_exchange_info['symbols'][0]['filters'][2]["filterType"]) == "MIN_NOTIONAL":
-                self.filters.update(
-                    {
-                        "MIN_NOTIONAL_filterType": symbol_exchange_info['symbols'][0]['filters'][2]["filterType"],
-                        "MIN_NOTIONAL_minNotional": symbol_exchange_info['symbols'][0]['filters'][2]["minNotional"],
-                        "MIN_NOTIONAL_applyToMarket": symbol_exchange_info['symbols'][0]['filters'][2]["applyToMarket"],
-                        "MIN_NOTIONAL_avgPriceMins": symbol_exchange_info['symbols'][0]['filters'][2]["avgPriceMins"],
+            self.filters.update(self.parse_filters(symbol_exchange_info['symbols'][0]['filters']))
 
-                    }
-                )
-            else:
-                for counter in range(len(symbol_exchange_info['symbols'][0]['filters'])):
-                    in_list = ["MIN_NOTIONAL", "NOTIONAL"]
-                    if str(symbol_exchange_info['symbols'][0]['filters'][counter]["filterType"]) in in_list:
-                        for key in symbol_exchange_info['symbols'][0]['filters'][counter].keys():
-                            self.filters.update(
-                                {
-                                    f"MIN_NOTIONAL_{key}": symbol_exchange_info['symbols'][0]['filters'][counter][key]
-                                }
-                            )
-                        break
+            #     "PRICE_FILTER_filterType": symbol_exchange_info['symbols'][0]['filters'][0]["filterType"],
+            #     "PRICE_FILTER_minPrice": symbol_exchange_info['symbols'][0]['filters'][0]["minPrice"],
+            #     "PRICE_FILTER_maxPrice": symbol_exchange_info['symbols'][0]['filters'][0]["maxPrice"],
+            #     "PRICE_FILTER_tickSize": symbol_exchange_info['symbols'][0]['filters'][0]["tickSize"],
+            #     "LOT_SIZE_filterType": symbol_exchange_info['symbols'][0]['filters'][1]["filterType"],
+            #     "LOT_SIZE_minQty": symbol_exchange_info['symbols'][0]['filters'][1]["minQty"],
+            #     "LOT_SIZE_maxQty": symbol_exchange_info['symbols'][0]['filters'][1]["maxQty"],
+            #     "LOT_SIZE_stepSize": symbol_exchange_info['symbols'][0]['filters'][1]["stepSize"],
+            # }
+            # if str(symbol_exchange_info['symbols'][0]['filters'][2]["filterType"]) == "MIN_NOTIONAL":
+            #     self.filters.update(
+            #         {
+            #             "MIN_NOTIONAL_filterType": symbol_exchange_info['symbols'][0]['filters'][2]["filterType"],
+            #             "MIN_NOTIONAL_minNotional": symbol_exchange_info['symbols'][0]['filters'][2]["minNotional"],
+            #             "MIN_NOTIONAL_applyToMarket": symbol_exchange_info['symbols'][0]['filters'][2]["applyToMarket"],
+            #             "MIN_NOTIONAL_avgPriceMins": symbol_exchange_info['symbols'][0]['filters'][2]["avgPriceMins"],
+            #
+            #         }
+            #     )
+            # else:
+            #     for counter in range(len(symbol_exchange_info['symbols'][0]['filters'])):
+            #         in_list = ["MIN_NOTIONAL", "NOTIONAL"]
+            #         if str(symbol_exchange_info['symbols'][0]['filters'][counter]["filterType"]) in in_list:
+            #             for key in symbol_exchange_info['symbols'][0]['filters'][counter].keys():
+            #                 self.filters.update(
+            #                     {
+            #                         f"MIN_NOTIONAL_{key}": symbol_exchange_info['symbols'][0]['filters'][counter][key]
+            #                     }
+            #                 )
+            #             break
+
+            # TODO: make function for aggregate filters
+            """
+                {
+                "PERCENT_PRICE_BY_SIDE_filterType": "PERCENT_PRICE_BY_SIDE",
+                "PERCENT_PRICE_BY_SIDE_bidMultiplierUp": "5",
+                "PERCENT_PRICE_BY_SIDE_bidMultiplierDown": "0.2",
+                "PERCENT_PRICE_BY_SIDE_askMultiplierUp": "5",
+                "PERCENT_PRICE_BY_SIDE_askMultiplierDown": "0.2",
+                "PERCENT_PRICE_BY_SIDE_avgPriceMins": 1
+                },
+            """
+            # for counter in range(len(symbol_exchange_info['symbols'][0]['filters'])):
+            #     in_list = ["PERCENT_PRICE_BY_SIDE"]
+            #     if str(symbol_exchange_info['symbols'][0]['filters'][counter]["filterType"]) in in_list:
+            #         for key in symbol_exchange_info['symbols'][0]['filters'][counter].keys():
+            #             self.filters.update(
+            #                 {
+            #                     f"PERCENT_PRICE_BY_SIDE_{key}": symbol_exchange_info['symbols'][0]['filters'][counter][key]
+            #                 }
+            #             )
+            #         break
 
         except Exception as _ex:
             print(_ex)
@@ -587,11 +622,11 @@ class SpotClient(Spot):
 
 if __name__ == '__main__':
     spot_client = SpotClient(
-        first_symbol='JOE',
-        # test_key=True
+        first_symbol='BTC',
+        test_key=True
     )
 
-    _id = 7
+    _id = 3
 
     if _id == 1:
         r = spot_client.new_order(
@@ -651,14 +686,14 @@ if __name__ == '__main__':
         spot_client.str_current_state()
     elif _id == 6:
         spot_client.get_exchange_info()
-
-        print('minNotional:', spot_client.minNotional)
-        print('minPrice:', spot_client.minPrice)
-        print('maxPrice:', spot_client.maxPrice)
-        print('tickSize:', spot_client.tickSize)
-        print('minQty:', spot_client.minQty)
-        print('maxQty:', spot_client.maxQty)
-        print('stepSize:', spot_client.stepSize)
+        print('PRICE_FILTER_filterType:', spot_client.filters['PRICE_FILTER_filterType'])
+        print('PRICE_FILTER_minPrice:', spot_client.filters['PRICE_FILTER_minPrice'])
+        print('PRICE_FILTER_maxPrice:', spot_client.filters['PRICE_FILTER_maxPrice'])
+        print('PRICE_FILTER_tickSize:', spot_client.filters['PRICE_FILTER_tickSize'])
+        print('LOT_SIZE_filterType:', spot_client.filters['LOT_SIZE_filterType'])
+        print('LOT_SIZE_minQty:', spot_client.filters['LOT_SIZE_minQty'])
+        print('LOT_SIZE_maxQty:', spot_client.filters['LOT_SIZE_maxQty'])
+        print('LOT_SIZE_stepSize:', spot_client.filters['LOT_SIZE_stepSize'])
     elif _id == 7:
 
         # now = int(time.time() // 1)

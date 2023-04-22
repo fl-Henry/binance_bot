@@ -2,16 +2,21 @@ import os
 import sqlite3
 import argparse
 import datetime
+from random import randint
 # from datetime import datetime
 from decimal import Decimal, getcontext, ROUND_CEILING, ROUND_UP, ROUND_HALF_UP, ROUND_HALF_EVEN, ROUND_HALF_DOWN
 import time
 
-base_path = str(__file__)[:len(__file__) - len(os.path.basename(str(__file__))) - 1]
-print(base_path)
-
-symbol = "CUSTOMUSDT"
-print(symbol[:-4])
-print(symbol[-4:])
+side_test_list = ["BUY", "SELL"]
+side_test = side_test_list[randint(0, len(side_test_list) - 1)]
+print(side_test)
+#
+# base_path = str(__file__)[:len(__file__) - len(os.path.basename(str(__file__))) - 1]
+# print(base_path)
+#
+# symbol = "CUSTOMUSDT"
+# print(symbol[:-4])
+# print(symbol[-4:])
 
 # blank_dict = {"klines": None}
 # if blank_dict["klines"] is None:

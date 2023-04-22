@@ -262,12 +262,9 @@ class WebsocketClient(SpotWebsocketClient):
                 }
 
                 if len(self.sqlh_dict) > 0:
-                    self.sqlh = self.sqlh_dict[response_data["symbol"]]
-                elif (self.db_name is not None) and (self.db_dir is not None):
-                    self.sqlh = SQLiteHandler(db_name=self.db_name, db_dir=self.db_dir, check_same_thread=False)
-                else:
-                    print("[ERROR] _execution_reports > db_name, db_dir, sqlh_dict are None")
-                    raise AttributeError
+                    self.db_name = self.sqlh_dict[response_data["symbol"]].db_name
+                    self.db_dir = self.sqlh_dict[response_data["symbol"]].db_dir
+                self.sqlh = SQLiteHandler(db_name=self.db_name, db_dir=self.db_dir, check_same_thread=False)
                 table = 'pending_orders'
 
                 while_counter = 0

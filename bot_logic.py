@@ -23,8 +23,8 @@ sqlh_dict: dict[str, SQLiteHandler] = {}  # {symbol: SQLiteHandler, "}
 
 buy_div = 0.2  # sell_div = 1 - buy_div
 profit_percent = 0.3
-symbol_cost_limit = 40
-cost_limit = 160
+symbol_cost_limit = 20
+cost_limit = 40
 
 loop_waiting = (0 * 60) + 30
 
@@ -68,6 +68,38 @@ def create_sell_order():
         price=spot_client.depth_limit(20, side='asks'),
         timeInForce="GTC"
     )
+
+
+def new_order_test_from_dict(order):
+    """
+    order = {
+        "symbol": str(symbol),                                                  \n
+        "price": str(buy_price),                                                \n
+        "origQty": str(quantity),                                               \n
+        "cost": str(buy_cost),                                                  \n
+        "side": str('BUY'),                                                     \n
+        "workingTime": int(time.time() * 1000 // 1),                            \n
+    }
+    :param order:
+    :return:
+    """
+    try:
+        spot_client.new_order_test(
+            symbol=str(order['symbol']),
+            quantity=str(order['origQty']),
+            side=str(order['side']),
+            type="LIMIT",
+            price=str(order['price']),
+            timeInForce="GTC"
+        )
+
+        return True
+    except Exception as _ex:
+        to_print_data = f"\nOrder: Sy:{order['symbol']}; Si:{order['side']} P: {order['price']}; " \
+                        f"Q: {order['origQty']}; C: {order['cost']}"
+        print(to_print_data)
+        print('[ERROR] new_order_test_from_dict > ', str(order['symbol']), _ex)
+        return False
 
 
 def create_buy_order_from_dict(order):
@@ -369,8 +401,12 @@ def symbol_trade_process(symbol, symbol_sqlh: SQLiteHandler, custom_buy_div=None
         purchase_cost = decimal_rounding(purchase_cost, "0.00000000")
 
     quantity = Decimal(purchase_cost) / Decimal(current_state['order_book_bid_current_price'])
+    print(quantity)
     quantity = decimal_rounding(quantity, spot_client.filters_list[symbol]['LOT_SIZE_stepSize'], int_round=True)
+    print(spot_client.filters_list[symbol]['LOT_SIZE_stepSize'])
+    print(quantity)
     quantity += Decimal(spot_client.filters_list[symbol]['LOT_SIZE_stepSize'])
+    print(quantity)
 
     buy_cost = Decimal(buy_price) * Decimal(quantity)
     buy_cost = decimal_rounding(buy_cost, spot_client.filters_list[symbol]['PRICE_FILTER_tickSize'], int_round=True)
@@ -382,7 +418,7 @@ def symbol_trade_process(symbol, symbol_sqlh: SQLiteHandler, custom_buy_div=None
     sell_cost = decimal_rounding(sell_cost, spot_client.filters_list[symbol]['PRICE_FILTER_tickSize'], int_round=True)
 
     buy_order_to_db = {
-        "symbol": str(spot_client.symbol),
+        "symbol": str(symbol),
         "price": str(buy_price),
         "origQty": str(quantity),
         "cost": str(buy_cost),
@@ -390,7 +426,7 @@ def symbol_trade_process(symbol, symbol_sqlh: SQLiteHandler, custom_buy_div=None
         "workingTime": int(time.time() * 1000 // 1),
     }
     sell_order_to_db = {
-        "symbol": str(spot_client.symbol),
+        "symbol": str(symbol),
         "price": str(sell_price),
         "origQty": str(quantity),
         "cost": str(sell_cost),
@@ -398,25 +434,85 @@ def symbol_trade_process(symbol, symbol_sqlh: SQLiteHandler, custom_buy_div=None
         "workingTime": int(time.time() * 1000 // 1),
     }
 
-    symbol_sqlh.insert_from_dict('pending_orders', buy_order_to_db)
-    symbol_sqlh.insert_from_dict('pending_orders', sell_order_to_db)
-    pair_pk = symbol_sqlh.select_from_table('pending_orders', ['pk'])
-    last_pair_pk = pair_pk.fetchall()[-2:]
+    # Check filters
+    filters_key = new_order_test_from_dict(buy_order_to_db)
+    if filters_key:
+        filters_key = new_order_test_from_dict(sell_order_to_db)
 
-    pair_pk_to_db = {
-        'buy_order_pk': last_pair_pk[0][0],
-        'sell_order_pk': last_pair_pk[1][0],
-    }
-    symbol_sqlh.insert_from_dict('orders_pair', pair_pk_to_db)
+    # PRICE_FILTER
+    # if float(spot_client.filters_list[symbol]['PRICE_FILTER_maxPrice']) < float(sell_order_to_db["price"]):
+    #     filters_key = False
+    #     print("[Filter failed] PRICE_FILTER_maxPrice")
+    #     print(f"PRICE_FILTER_maxPrice: {float(spot_client.filters_list[symbol]['PRICE_FILTER_maxPrice'])}")
+    #     print(f"Sell price: {float(sell_order_to_db['price'])}")
+    # elif float(spot_client.filters_list[symbol]['PRICE_FILTER_maxPrice']) < float(buy_order_to_db["price"]):
+    #     filters_key = False
+    #     print("[Filter failed] PRICE_FILTER_maxPrice")
+    #     print(f"PRICE_FILTER_maxPrice: {float(spot_client.filters_list[symbol]['PRICE_FILTER_maxPrice'])}")
+    #     print(f"Buy price: {float(buy_order_to_db['price'])}")
+    # elif float(spot_client.filters_list[symbol]['PRICE_FILTER_minPrice']) > float(sell_order_to_db["price"]):
+    #     filters_key = False
+    #     print("[Filter failed] PRICE_FILTER_minPrice")
+    #     print(f"PRICE_FILTER_maxPrice: {float(spot_client.filters_list[symbol]['PRICE_FILTER_minPrice'])}")
+    #     print(f"Sell price: {float(sell_order_to_db['price'])}")
+    # elif float(spot_client.filters_list[symbol]['PRICE_FILTER_minPrice']) > float(buy_order_to_db["price"]):
+    #     filters_key = False
+    #     print("[Filter failed] PRICE_FILTER_minPrice")
+    #     print(f"PRICE_FILTER_maxPrice: {float(spot_client.filters_list[symbol]['PRICE_FILTER_minPrice'])}")
+    #     print(f"Buy price: {float(buy_order_to_db['price'])}")
 
-    to_print_data = f"\n             Pending orders created (profit_percent: {custom_profit_percent})" \
-                    f"\nBuy:      Price: {buy_price}  | Quantity: {quantity}    |    Cost: {buy_cost}" \
-                    f"\nSell:     Price: {sell_price}  | Quantity: {quantity}    |    Cost: {sell_cost}"
+    # PERCENT_PRICE_BY_SIDE
 
-    print(f'{Tags.BackgroundLightGreen}{Tags.Black}{to_print_data}{Tags.ResetAll}')
+    # if float(spot_client.filters_list[symbol]['PRICE_FILTER_minPrice']) > float(buy_order_to_db["price"]):
+    #     filters_key = False
+    #     print("[Filter failed] PRICE_FILTER_minPrice")
+    #     print(f"PRICE_FILTER_maxPrice: {float(spot_client.filters_list[symbol]['PRICE_FILTER_minPrice'])}")
+    #     print(f"Buy price: {float(buy_order_to_db['price'])}")
 
-    create_buy_order_from_dict(buy_order_to_db)
-    create_sell_order_from_dict(sell_order_to_db)
+    """
+        {
+        "PERCENT_PRICE_BY_SIDE_filterType": "PERCENT_PRICE_BY_SIDE",
+        "PERCENT_PRICE_BY_SIDE_bidMultiplierUp": "5",
+        "PERCENT_PRICE_BY_SIDE_bidMultiplierDown": "0.2",
+        "PERCENT_PRICE_BY_SIDE_askMultiplierUp": "5",
+        "PERCENT_PRICE_BY_SIDE_askMultiplierDown": "0.2",
+        "PERCENT_PRICE_BY_SIDE_avgPriceMins": 1
+        },
+    """
+
+    """
+    Buy orders will succeed on this filter if:
+    
+        Order price <= weightedAveragePrice * bidMultiplierUp
+        Order price >= weightedAveragePrice * bidMultiplierDown
+    
+    Sell orders will succeed on this filter if:
+    
+        Order Price <= weightedAveragePrice * askMultiplierUp
+        Order Price >= weightedAveragePrice * askMultiplierDown
+    
+"""
+
+    if filters_key:
+        symbol_sqlh.insert_from_dict('pending_orders', buy_order_to_db)
+        symbol_sqlh.insert_from_dict('pending_orders', sell_order_to_db)
+        pair_pk = symbol_sqlh.select_from_table('pending_orders', ['pk'])
+        last_pair_pk = pair_pk.fetchall()[-2:]
+
+        pair_pk_to_db = {
+            'buy_order_pk': last_pair_pk[0][0],
+            'sell_order_pk': last_pair_pk[1][0],
+        }
+        symbol_sqlh.insert_from_dict('orders_pair', pair_pk_to_db)
+
+        to_print_data = f"\n             Pending orders created (profit_percent: {custom_profit_percent})" \
+                        f"\nBuy:      Price: {buy_price}  | Quantity: {quantity}    |    Cost: {buy_cost}" \
+                        f"\nSell:     Price: {sell_price}  | Quantity: {quantity}    |    Cost: {sell_cost}"
+
+        print(f'{Tags.BackgroundLightGreen}{Tags.Black}{to_print_data}{Tags.ResetAll}')
+
+        create_buy_order_from_dict(buy_order_to_db)
+        create_sell_order_from_dict(sell_order_to_db)
 
 
 def if_buy():
@@ -508,6 +604,7 @@ def symbol_if_buy_kline(symbol, symbol_sqlh: SQLiteHandler, side, profit=0.3, pe
     :param symbol_sqlh: SQLiteHandler
     :param side: str                    | "BUY", "SELL"
     :param profit: float                | 0.3 -> 0.3 %  \\  1 -> 1 %
+    :param pending_only: bool
     :return:
     """
 
@@ -522,16 +619,21 @@ def symbol_if_buy_kline(symbol, symbol_sqlh: SQLiteHandler, side, profit=0.3, pe
         reset_index=True
     )
 
-    # Calculating parameters
-    all_new_orders = spot_client.get_orders_to_db(open_only=True, all_symbols=True)
-    all_new_orders_cost = 0
-    for order in all_new_orders:
-        all_new_orders_cost = float(all_new_orders_cost) + float(order['cost'])
-    symbol_new_orders_cost = float(orders_in_process["orders_new_cost"])
+    # parameters for pending_only
+    all_new_orders_cost, symbol_new_orders_cost = cost_limit * 2, symbol_cost_limit * 2
+    if not pending_only:
+        # Calculating parameters
+        all_new_orders = spot_client.get_orders_to_db(open_only=True, all_symbols=True)
+        all_new_orders_cost = 0
+        for order in all_new_orders:
+            all_new_orders_cost = float(all_new_orders_cost) + float(order['cost'])
+        symbol_new_orders_cost = float(orders_in_process["orders_new_cost"])
 
-    # Output
-    print("\nOrders in process cost:", orders_in_process['orders_new_cost'])
-    print('Cost limit', cost_limit)
+        # Output
+        output = f"\nAll orders in process cost:        {all_new_orders_cost}" \
+                 f"\nSymbol orders in process cost:     {symbol_new_orders_cost}" \
+                 f"\nCost limit:    {cost_limit} | Symbol cost limit: {symbol_cost_limit}"
+        print(output)
 
     # Trade process // There are pending orders -> New order from pending orders
     if len(orders_in_process['orders_pending']) > 0:
@@ -540,9 +642,9 @@ def symbol_if_buy_kline(symbol, symbol_sqlh: SQLiteHandler, side, profit=0.3, pe
     # There are no pending orders -> New order
     elif (all_new_orders_cost < cost_limit) and (symbol_new_orders_cost < symbol_cost_limit) and not pending_only:
         if side == "BUY":
-            symbol_trade_process(symbol, symbol_sqlh, custom_buy_div=0.1, custom_cost_limit=symbol_cost_limit, custom_profit_percent=profit)
+            symbol_trade_process(symbol, symbol_sqlh, custom_buy_div=0.2, custom_cost_limit=symbol_cost_limit, custom_profit_percent=profit)
         elif side == "SELL":
-            symbol_trade_process(symbol, symbol_sqlh, custom_buy_div=0.9, custom_cost_limit=symbol_cost_limit, custom_profit_percent=profit)
+            symbol_trade_process(symbol, symbol_sqlh, custom_buy_div=0.8, custom_cost_limit=symbol_cost_limit, custom_profit_percent=profit)
 
 
 def kline_sum(klines):
@@ -1150,6 +1252,9 @@ def id_arg_7(test_key=False):
         sqlh_dict.update({symbol: sqlh_symbol})
         sqlh_dict[symbol].create_all_tables(tables.create_all_tables)
 
+    # Creating streams
+    print(f"\n{Tags.LightYellow}Creating streams{Tags.ResetAll}")
+
     # Creating stream _execution_reports
     stream_id = randint(1, 99999)
     print(f"Stream: _execution_reports; ID: {stream_id}")
@@ -1158,7 +1263,6 @@ def id_arg_7(test_key=False):
     sleep(0.3)
 
     # Creating streams _kline_history
-    print(f"\n{Tags.LightYellow}Creating streams{Tags.ResetAll}")
     for symbol in symbols_list:
         try:
             stream_id = randint(1, 99999)
@@ -1249,19 +1353,24 @@ def id_arg_7(test_key=False):
 
         # Trade process // symbol = [100, 80, 20, 0, -20, -80, -100]
         if symbol_state == 100:
-            symbol_if_buy_kline(symbol_to_trade, sqlh_dict[symbol_to_trade], profit=0.6)
+            symbol_if_buy_kline(symbol_to_trade, sqlh_dict[symbol_to_trade], side="BUY", profit=0.6)
         elif symbol_state == 80:
-            symbol_if_buy_kline(symbol_to_trade, sqlh_dict[symbol_to_trade], profit=0.4)
+            symbol_if_buy_kline(symbol_to_trade, sqlh_dict[symbol_to_trade], side="BUY", profit=0.4)
         elif symbol_state == -80:
             # TODO: if_buy
             pass
         elif symbol_state == -100:
             # TODO: if_buy
             pass
+        elif test_key:
+            side_test_list = ["BUY", "SELL"]
+            side_test = side_test_list[randint(0, len(side_test_list) - 1)]
+            symbol_to_trade = symbols_list[randint(0, len(symbols_list) - 1)]
+            symbol_if_buy_kline(symbol_to_trade, sqlh_dict[symbol_to_trade], side=side_test, profit=0.4)
 
         # Checking pending orders for all symbols
         for symbol in symbols_list:
-            symbol_if_buy_kline(symbol, sqlh_dict[symbol], pending_only=True)
+            symbol_if_buy_kline(symbol, sqlh_dict[symbol], side="PENDING", pending_only=True)
 
         # Printing header before sleeping
         resp_type_pr = f'---- UTC time -------------------------------------- ' \
@@ -1537,7 +1646,7 @@ def start_bot_logic():
         print("[ERROR] start_bot_logic > id_arg is out of range | expected 2 or 6")
         print("id_arg = 1 > web_socket.stream_ticker() > [ERROR] TODO")
         print("id_arg = 2 > web_socket.stream_kline()")
-        print("id_arg = 3 > web_socket.stream_user_data()")
+        print("id_arg = 3 > web_socket.stream_user_data() > just for inform")
         print("id_arg = 4 > web_socket.stream_execution_reports() > sell/buy")
         print("id_arg = 5 > web_socket.stream_trades()")
         print("id_arg = 6 > web_socket.stream_agg_trades()")
