@@ -10,9 +10,17 @@ class SQLiteHandler:
 
     def __init__(self, db_name='sqlite', db_dir='.', check_same_thread=True, read_only=False):
 
-        self.db_dir = db_dir
-        self.db_name = f"{db_name}.db"
-        self.db_path = f"{self.db_dir}/{self.db_name}"
+        if db_dir[-1:] == "/":
+            self.db_dir = db_dir
+        else:
+            self.db_dir = f"{db_dir}/"
+
+        if db_name[-3:] == ".db":
+            self.db_name = db_name
+        else:
+            self.db_name = f"{db_name}.db"
+        self.db_path = f"{self.db_dir}{self.db_name}"
+
         if read_only:
             self.connected_db = sqlite3.connect(
                 f"file:{self.db_path}?mode=ro",

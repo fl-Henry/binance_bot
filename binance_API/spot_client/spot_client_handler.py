@@ -23,14 +23,15 @@ class SpotClient(Spot):
         :param second_symbol: str   | 'USDT'
         :return: Spot               | client
         """
-        self.minNotional = None
-        self.minPrice = None
-        self.maxPrice = None
-        self.tickSize = None
-        self.minQty = None
-        self.maxQty = None
-        self.stepSize = None
+        # self.minNotional = None
+        # self.minPrice = None
+        # self.maxPrice = None
+        # self.tickSize = None
+        # self.minQty = None
+        # self.maxQty = None
+        # self.stepSize = None
         self.filters = None
+        self.filters_list = {}
         self.current_state_data = None
         self.first_symbol = first_symbol
         self.second_symbol = second_symbol
@@ -345,23 +346,41 @@ class SpotClient(Spot):
                 "LOT_SIZE_minQty": symbol_exchange_info['symbols'][0]['filters'][1]["minQty"],
                 "LOT_SIZE_maxQty": symbol_exchange_info['symbols'][0]['filters'][1]["maxQty"],
                 "LOT_SIZE_stepSize": symbol_exchange_info['symbols'][0]['filters'][1]["stepSize"],
-                "MIN_NOTIONAL_filterType": symbol_exchange_info['symbols'][0]['filters'][2]["filterType"],
-                "MIN_NOTIONAL_minNotional": symbol_exchange_info['symbols'][0]['filters'][2]["minNotional"],
-                "MIN_NOTIONAL_applyToMarket": symbol_exchange_info['symbols'][0]['filters'][2]["applyToMarket"],
-                "MIN_NOTIONAL_avgPriceMins": symbol_exchange_info['symbols'][0]['filters'][2]["avgPriceMins"],
             }
+            if str(symbol_exchange_info['symbols'][0]['filters'][2]["filterType"]) == "MIN_NOTIONAL":
+                self.filters.update(
+                    {
+                        "MIN_NOTIONAL_filterType": symbol_exchange_info['symbols'][0]['filters'][2]["filterType"],
+                        "MIN_NOTIONAL_minNotional": symbol_exchange_info['symbols'][0]['filters'][2]["minNotional"],
+                        "MIN_NOTIONAL_applyToMarket": symbol_exchange_info['symbols'][0]['filters'][2]["applyToMarket"],
+                        "MIN_NOTIONAL_avgPriceMins": symbol_exchange_info['symbols'][0]['filters'][2]["avgPriceMins"],
+
+                    }
+                )
+            else:
+                for counter in range(len(symbol_exchange_info['symbols'][0]['filters'])):
+                    in_list = ["MIN_NOTIONAL", "NOTIONAL"]
+                    if str(symbol_exchange_info['symbols'][0]['filters'][counter]["filterType"]) in in_list:
+                        for key in symbol_exchange_info['symbols'][0]['filters'][counter].keys():
+                            self.filters.update(
+                                {
+                                    f"MIN_NOTIONAL_{key}": symbol_exchange_info['symbols'][0]['filters'][counter][key]
+                                }
+                            )
+                        break
+
         except Exception as _ex:
             print(_ex)
             print(f"symbol_exchange_info: {symbol_exchange_info}")
             raise _ex
 
-        self.minNotional = Decimal(str(float(self.filters['MIN_NOTIONAL_minNotional'])))
-        self.minPrice = Decimal(str(float(self.filters['PRICE_FILTER_minPrice'])))
-        self.maxPrice = Decimal(str(float(self.filters['PRICE_FILTER_maxPrice'])))
-        self.tickSize = Decimal(str(float(self.filters['PRICE_FILTER_tickSize'])))
-        self.minQty = Decimal(str(float(self.filters['LOT_SIZE_minQty'])))
-        self.maxQty = Decimal(str(float(self.filters['LOT_SIZE_maxQty'])))
-        self.stepSize = Decimal(str(float(self.filters['LOT_SIZE_stepSize'])))
+        # self.minNotional = Decimal(str(float(self.filters['MIN_NOTIONAL_minNotional'])))
+        # self.minPrice = Decimal(str(float(self.filters['PRICE_FILTER_minPrice'])))
+        # self.maxPrice = Decimal(str(float(self.filters['PRICE_FILTER_maxPrice'])))
+        # self.tickSize = Decimal(str(float(self.filters['PRICE_FILTER_tickSize'])))
+        # self.minQty = Decimal(str(float(self.filters['LOT_SIZE_minQty'])))
+        # self.maxQty = Decimal(str(float(self.filters['LOT_SIZE_maxQty'])))
+        # self.stepSize = Decimal(str(float(self.filters['LOT_SIZE_stepSize'])))
 
         return self.filters
 
@@ -400,11 +419,17 @@ class SpotClient(Spot):
         :param second_symbol:
         :return:
         """
-        if symbol is None:
+        if (symbol is None) and (first_symbol is not None) and (second_symbol is not None):
+            symbol = f"{first_symbol}{second_symbol}"
+        else:
             symbol = self.symbol
-        if first_symbol is None:
+        if (first_symbol is None) and (symbol is not None):
+            first_symbol = symbol[:-4]
+        else:
             first_symbol = self.first_symbol
-        if second_symbol is None:
+        if (second_symbol is None) and (symbol is not None):
+            second_symbol = symbol[-4:]
+        else:
             second_symbol = self.second_symbol
 
         # getting the first bid and the first ask
@@ -486,32 +511,54 @@ class SpotClient(Spot):
                  f"\n{wallet}"
         print(output)
 
-    def get_orders_to_db(self, get_limit=200, orders_to_sort=None):
+    def get_orders_to_db(self, get_limit=200, open_only=False, all_symbols=False, orders_to_sort=None):
         """
+        return {
+            "symbol",\n
+            "orderId",\n
+            "price",\n
+            "origQty",\n
+            "cost",\n
+            "side",\n
+            "status",\n
+            "type",\n
+            "timeInForce",\n
+            "workingTime",\n
+        }
         :param self: Spot
         :param get_limit: int           | 200
+        :param open_only:
+        :param all_symbols:
         :param orders_to_sort: dict     | None
         """
-        orders = self.get_orders(symbol=self.symbol, limit=get_limit)
+        if open_only and all_symbols:
+            orders = self.get_open_orders()
+        elif open_only:
+            orders = self.get_open_orders(symbol=self.symbol)
+        else:
+            orders = self.get_orders(symbol=self.symbol, limit=get_limit)
 
         orders_list = []
-        for order in orders:
-            order_to_append = {
-                "symbol": str(order['symbol']),
-                "orderId": int(order['orderId']),
-                "price": str(order['price']),
-                "origQty": str(order['origQty']),
-                "cost": str((Decimal(order['price']) * Decimal(order['origQty'])).quantize(
-                    Decimal('0.00000000'),
-                    rounding=ROUND_HALF_UP
-                )),
-                "side": str(order['side']),
-                "status": str(order['status']),
-                "type": str(order['type']),
-                "timeInForce": str(order['timeInForce']),
-                "workingTime": int(order['workingTime']),
-            }
-            orders_list.append(order_to_append)
+        if len(orders) > 0:
+            for order in orders:
+                order_to_append = {
+                    "symbol": str(order['symbol']),
+                    "orderId": int(order['orderId']),
+                    "price": str(order['price']),
+                    "origQty": str(order['origQty']),
+                    "cost": str((Decimal(order['price']) * Decimal(order['origQty'])).quantize(
+                        Decimal('0.00000000'),
+                        rounding=ROUND_HALF_UP
+                    )),
+                    "side": str(order['side']),
+                    "status": str(order['status']),
+                    "type": str(order['type']),
+                    "timeInForce": str(order['timeInForce']),
+                    "workingTime": int(order['workingTime']),
+                }
+                orders_list.append(order_to_append)
+        else:
+            return []
 
         if orders_to_sort is None:
             return orders_list

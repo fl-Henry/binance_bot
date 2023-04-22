@@ -1,9 +1,13 @@
+import os
 import sqlite3
 import argparse
 import datetime
 # from datetime import datetime
 from decimal import Decimal, getcontext, ROUND_CEILING, ROUND_UP, ROUND_HALF_UP, ROUND_HALF_EVEN, ROUND_HALF_DOWN
 import time
+
+base_path = str(__file__)[:len(__file__) - len(os.path.basename(str(__file__))) - 1]
+print(base_path)
 
 symbol = "CUSTOMUSDT"
 print(symbol[:-4])

@@ -19,7 +19,8 @@ class WebsocketClient(SpotWebsocketClient):
 
         self.db_name = None
         self.db_dir = None
-        self.sqlh = None
+        self.sqlh: SQLiteHandler = None
+        self.sqlh_dict: dict[str, SQLiteHandler] = None
         self.first_symbol = first_symbol
         self.second_symbol = second_symbol
         self.symbol = f"{self.first_symbol}{self.second_symbol}"
@@ -238,11 +239,10 @@ class WebsocketClient(SpotWebsocketClient):
 
     def _execution_reports(self, response):
         """"""
-        self.sqlh = SQLiteHandler(db_name=self.db_name, db_dir=self.db_dir, check_same_thread=False)
-        table = 'pending_orders'
+
         if response.get('e') == 'executionReport':
-            if str(response.get('s')) != self.symbol:
-                print('\n[WARNING] report_execution_handler > execution report was not handled')
+            if (str(response.get('s')) != self.symbol) and (str(response.get('s')) not in self.sqlh_dict.keys()):
+                print('\n[WARNING] _execution_reports > execution report was not handled')
                 print(f"[WARNING] {str(response.get('s'))} != {self.symbol}")
             else:
                 response_data = {
@@ -260,6 +260,15 @@ class WebsocketClient(SpotWebsocketClient):
                     'timeInForce': str(response.get('f')),
                     'workingTime': int(response.get('W')),
                 }
+
+                if len(self.sqlh_dict) > 0:
+                    self.sqlh = self.sqlh_dict[response_data["symbol"]]
+                elif (self.db_name is not None) and (self.db_dir is not None):
+                    self.sqlh = SQLiteHandler(db_name=self.db_name, db_dir=self.db_dir, check_same_thread=False)
+                else:
+                    print("[ERROR] _execution_reports > db_name, db_dir, sqlh_dict are None")
+                    raise AttributeError
+                table = 'pending_orders'
 
                 while_counter = 0
                 while while_counter < 6:
@@ -287,10 +296,7 @@ class WebsocketClient(SpotWebsocketClient):
                                 print("[ERROR] _execution_reports > IndexError >", _ex)
                                 print("response_data['status']:", response_data['status'])
                                 print("where_condition:", where_condition)
-                                print(
-                                    'order_pk:',
-                                    self.sqlh.select_from_table(table, ['pk'], where_condition=where_condition)
-                                )
+                                print('order_pk:', self.sqlh.select_from_table(table, ['pk'], where_condition=where_condition))
                             else:
                                 set_data_dict = {'status': str(response.get('X'))}
                                 where_condition = f'pk = {pk}'
@@ -305,7 +311,7 @@ class WebsocketClient(SpotWebsocketClient):
                         while_counter += 1
                         time.sleep(randint(1, 10))
 
-        self.sqlh.close()
+                self.sqlh.close()
 
     def _user_data(self, response):
         """
@@ -614,8 +620,10 @@ class WebsocketClient(SpotWebsocketClient):
         else:
             print(repr(response))
 
-    # Streams =============================================================================================
-    # Streams =============================================================================================
+    # ===== Streams =================================================================================== Streams =====
+    ...
+
+    # ===== Streams =================================================================================== Streams =====
     def stream_book_ticker(self):
 
         self.book_ticker(
@@ -666,16 +674,25 @@ class WebsocketClient(SpotWebsocketClient):
         else:
             raise KeyError('listen_key is None')
 
-    def stream_execution_reports(self, db_name, db_dir):
+    def stream_execution_reports(self, db_name=None, db_dir=None, sqlh_dict: dict[str, SQLiteHandler] = None, stream_id=None):
         """
         """
-        self.db_name = db_name
-        self.db_dir = db_dir
+        if sqlh_dict is not None:
+            self.sqlh_dict = sqlh_dict
+        elif (db_name is not None) and (db_dir is not None):
+            self.db_name = db_name
+            self.db_dir = db_dir
+        else:
+            print("[ERROR] stream_execution_reports > db_name, db_dir, sqlh_dict are None")
+            raise AttributeError
+
+        if stream_id is None:
+            stream_id = 4
 
         if self.listen_key is not None:
             self.user_data(
                 self.listen_key,
-                id=4,
+                id=stream_id,
                 callback=self._execution_reports
             )
         else:

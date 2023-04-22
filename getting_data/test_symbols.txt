@@ -1,0 +1,1 @@
+['BNB', 'BTC', 'ETH', 'LTC', 'TRX', 'XRP']
