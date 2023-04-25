@@ -23,13 +23,6 @@ class SpotClient(Spot):
         :param second_symbol: str   | 'USDT'
         :return: Spot               | client
         """
-        # self.minNotional = None
-        # self.minPrice = None
-        # self.maxPrice = None
-        # self.tickSize = None
-        # self.minQty = None
-        # self.maxQty = None
-        # self.stepSize = None
         self.filters = None
         self.filters_list = {}
         self.current_state_data = None
@@ -305,14 +298,22 @@ class SpotClient(Spot):
         return result
 
     @staticmethod
-    def parse_filters(all_symbols_filters, in_list: list = None):
+    def parse_filters(raw_filters, in_list: list = None):
         filters = {}
+        min_notional_key = False
         if in_list is None:
-            in_list = ["PERCENT_PRICE_BY_SIDE", "LOT_SIZE", "PRICE_FILTER", "MIN_NOTIONAL"]
-        for counter in range(len(all_symbols_filters)):
-            if str(all_symbols_filters[counter]["filterType"]) in in_list:
-                for key in all_symbols_filters[counter].keys():
-                    filters.update({f"{all_symbols_filters[counter]['filterType']}_{key}": all_symbols_filters[counter][key]})
+            in_list = ["PERCENT_PRICE_BY_SIDE", "LOT_SIZE", "PRICE_FILTER", "MIN_NOTIONAL", "NOTIONAL"]
+        for counter in range(len(raw_filters)):
+            if str(raw_filters[counter]["filterType"]) in in_list:
+                if str(raw_filters[counter]["filterType"]) in ["MIN_NOTIONAL", "NOTIONAL"]:
+                    if not min_notional_key or str(raw_filters[counter]["filterType"]) == "MIN_NOTIONAL":
+                        min_notional_key = True
+                        for key in raw_filters[counter].keys():
+                            filters.update({f"MIN_NOTIONAL_{key}": raw_filters[counter][key]})
+                else:
+                    for key in raw_filters[counter].keys():
+                        filters.update({f"{raw_filters[counter]['filterType']}_{key}": raw_filters[counter][key]})
+
         return filters
 
     def get_exchange_info(self, symbol=None):
@@ -351,71 +352,10 @@ class SpotClient(Spot):
             }
             self.filters.update(self.parse_filters(symbol_exchange_info['symbols'][0]['filters']))
 
-            #     "PRICE_FILTER_filterType": symbol_exchange_info['symbols'][0]['filters'][0]["filterType"],
-            #     "PRICE_FILTER_minPrice": symbol_exchange_info['symbols'][0]['filters'][0]["minPrice"],
-            #     "PRICE_FILTER_maxPrice": symbol_exchange_info['symbols'][0]['filters'][0]["maxPrice"],
-            #     "PRICE_FILTER_tickSize": symbol_exchange_info['symbols'][0]['filters'][0]["tickSize"],
-            #     "LOT_SIZE_filterType": symbol_exchange_info['symbols'][0]['filters'][1]["filterType"],
-            #     "LOT_SIZE_minQty": symbol_exchange_info['symbols'][0]['filters'][1]["minQty"],
-            #     "LOT_SIZE_maxQty": symbol_exchange_info['symbols'][0]['filters'][1]["maxQty"],
-            #     "LOT_SIZE_stepSize": symbol_exchange_info['symbols'][0]['filters'][1]["stepSize"],
-            # }
-            # if str(symbol_exchange_info['symbols'][0]['filters'][2]["filterType"]) == "MIN_NOTIONAL":
-            #     self.filters.update(
-            #         {
-            #             "MIN_NOTIONAL_filterType": symbol_exchange_info['symbols'][0]['filters'][2]["filterType"],
-            #             "MIN_NOTIONAL_minNotional": symbol_exchange_info['symbols'][0]['filters'][2]["minNotional"],
-            #             "MIN_NOTIONAL_applyToMarket": symbol_exchange_info['symbols'][0]['filters'][2]["applyToMarket"],
-            #             "MIN_NOTIONAL_avgPriceMins": symbol_exchange_info['symbols'][0]['filters'][2]["avgPriceMins"],
-            #
-            #         }
-            #     )
-            # else:
-            #     for counter in range(len(symbol_exchange_info['symbols'][0]['filters'])):
-            #         in_list = ["MIN_NOTIONAL", "NOTIONAL"]
-            #         if str(symbol_exchange_info['symbols'][0]['filters'][counter]["filterType"]) in in_list:
-            #             for key in symbol_exchange_info['symbols'][0]['filters'][counter].keys():
-            #                 self.filters.update(
-            #                     {
-            #                         f"MIN_NOTIONAL_{key}": symbol_exchange_info['symbols'][0]['filters'][counter][key]
-            #                     }
-            #                 )
-            #             break
-
-            # TODO: make function for aggregate filters
-            """
-                {
-                "PERCENT_PRICE_BY_SIDE_filterType": "PERCENT_PRICE_BY_SIDE",
-                "PERCENT_PRICE_BY_SIDE_bidMultiplierUp": "5",
-                "PERCENT_PRICE_BY_SIDE_bidMultiplierDown": "0.2",
-                "PERCENT_PRICE_BY_SIDE_askMultiplierUp": "5",
-                "PERCENT_PRICE_BY_SIDE_askMultiplierDown": "0.2",
-                "PERCENT_PRICE_BY_SIDE_avgPriceMins": 1
-                },
-            """
-            # for counter in range(len(symbol_exchange_info['symbols'][0]['filters'])):
-            #     in_list = ["PERCENT_PRICE_BY_SIDE"]
-            #     if str(symbol_exchange_info['symbols'][0]['filters'][counter]["filterType"]) in in_list:
-            #         for key in symbol_exchange_info['symbols'][0]['filters'][counter].keys():
-            #             self.filters.update(
-            #                 {
-            #                     f"PERCENT_PRICE_BY_SIDE_{key}": symbol_exchange_info['symbols'][0]['filters'][counter][key]
-            #                 }
-            #             )
-            #         break
-
         except Exception as _ex:
             print(_ex)
             print(f"symbol_exchange_info: {symbol_exchange_info}")
             raise _ex
-
-        # self.minNotional = Decimal(str(float(self.filters['MIN_NOTIONAL_minNotional'])))
-        # self.minPrice = Decimal(str(float(self.filters['PRICE_FILTER_minPrice'])))
-        # self.maxPrice = Decimal(str(float(self.filters['PRICE_FILTER_maxPrice'])))
-        # self.tickSize = Decimal(str(float(self.filters['PRICE_FILTER_tickSize'])))
-        # self.minQty = Decimal(str(float(self.filters['LOT_SIZE_minQty'])))
-        # self.maxQty = Decimal(str(float(self.filters['LOT_SIZE_maxQty'])))
-        # self.stepSize = Decimal(str(float(self.filters['LOT_SIZE_stepSize'])))
 
         return self.filters
 
@@ -454,18 +394,12 @@ class SpotClient(Spot):
         :param second_symbol:
         :return:
         """
-        if (symbol is None) and (first_symbol is not None) and (second_symbol is not None):
-            symbol = f"{first_symbol}{second_symbol}"
-        else:
+        if symbol is None:
             symbol = self.symbol
-        if (first_symbol is None) and (symbol is not None):
+        if first_symbol is None:
             first_symbol = symbol[:-4]
-        else:
-            first_symbol = self.first_symbol
-        if (second_symbol is None) and (symbol is not None):
+        if second_symbol is None:
             second_symbol = symbol[-4:]
-        else:
-            second_symbol = self.second_symbol
 
         # getting the first bid and the first ask
         current_depth = self.depth(symbol=symbol, limit=1)
@@ -622,19 +556,26 @@ class SpotClient(Spot):
 
 if __name__ == '__main__':
     spot_client = SpotClient(
-        first_symbol='BTC',
-        test_key=True
+        first_symbol='SOL',
+        # first_symbol='BTC',
+        # test_key=True
     )
 
-    _id = 3
+    _id = 1
 
     if _id == 1:
+        """
+            BONDUSDT 4.809 2.13
+            OGUSDT 14.674 0.7
+            CELRUSDT 0.02852 358
+            SOLUSDT 23.01 0.23
+        """
         r = spot_client.new_order(
             symbol=spot_client.symbol,
-            quantity=0.00108,
-            side='BUY',
+            quantity=0.23,
+            side='SELL',
             type="LIMIT",
-            price=spot_client.depth_limit(26),
+            price=23.01,
             timeInForce="GTC"
         )
         print(r)

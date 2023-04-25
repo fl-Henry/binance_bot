@@ -27,7 +27,132 @@ def print_compact_list(list_data, cols_count=4):
     print()
 
 
-def script_process(sh: SeleniumHandler, lh: LogHandler):
+# TODO: get all symbols and sort
+#   https://www.binance.com/bapi/margin/v1/public/margin/symbols
+
+
+def markets_overview(sh: SeleniumHandler, lh: LogHandler, page_counter_limit=1):
+    sb = sh.browser
+    logs = lh.logger
+    base_path = str(__file__)[:len(__file__) - len(os.path.basename(str(__file__))) - 1]
+    symbols_path = f"{base_path}/symbols.txt"
+    markets_list = []
+
+    # open url https://www.binance.com/en/markets/spot
+    for counter in range(3):
+        url = f'https://www.binance.com/en/markets/spot'
+        try:
+            logs.info(f"Loading URL:{url}")
+            print(f"Loading URL:{url}")
+            sb.get(url)
+            logs.debug(f"URL is loaded:{url}")
+            break
+        except WebDriverException as _ex:
+            sleep(2)
+            print(f"Try: {counter} | Exception: {repr(_ex)}")
+            sh.reinitialize()
+            sb = sh.browser
+
+    for page_counter in range(1, page_counter_limit + 1):
+        # Click on pagging
+        if page_counter > 1:
+            css_selector = f"#page-{page_counter}"
+            logs.info(f"Click on page-{page_counter}")
+            print(f"Click on page-{page_counter}")
+            for counter in range(3):
+                try:
+                    _1h_filter = sb.find_element(By.CSS_SELECTOR, css_selector)
+                    actions = ActionChains(sb)
+                    actions.move_to_element(_1h_filter).click().perform()
+                    actions.reset_actions()
+                    logs.debug(f"Click on 1h filter is done")
+                    sleep(2)
+                    break
+                except TimeoutException as _ex:
+                    print(f"Try: {counter} | Exception: {repr(_ex)}")
+                    sb.refresh()
+
+        # # Setting markets list // Click on 1h filter
+        # css_selector = "div.css-1ua5sf9"  # 1h filter
+        # logs.info(f"Click on 1h filter")
+        # print(f"Click on 1h filter")
+        # for counter in range(3):
+        #     try:
+        #         WebDriverWait(sb, poll_frequency=1, timeout=10).until(EC.presence_of_element_located((By.CSS_SELECTOR, css_selector)))
+        #         _1h_filter = sb.find_element(By.CSS_SELECTOR, css_selector)
+        #         actions = ActionChains(sb)
+        #         actions.move_to_element(_1h_filter).click().perform()
+        #         actions.reset_actions()
+        #         logs.debug(f"Click on 1h filter is done")
+        #         sleep(2)
+        #         break
+        #     except TimeoutException as _ex:
+        #         print(f"Try: {counter} | Exception: {repr(_ex)}")
+        #         sb.refresh()
+
+        # # Click on Change filter
+        # css_selector = "div.css-1i04fkn"  # Change filter
+        # xpath_parent = '//div[contains(text(), "Change") and contains(@class, "css-1i04fkn") ]/parent::div'  # Change filter > parent div
+        # logs.info(f"Click on Change filter")
+        # print(f"Click on Change filter")
+        # for counter in range(3):
+        #     try:
+        #         WebDriverWait(sb, poll_frequency=1, timeout=10).until(EC.presence_of_element_located((By.CSS_SELECTOR, css_selector)))
+        #         change_filters = sb.find_elements(By.CSS_SELECTOR, css_selector)
+        #         for change_filter in change_filters:
+        #             if change_filter.text == "Change":
+        #                 parent_elem = sb.find_element(By.XPATH, xpath_parent)
+        #                 for _ in range(2):
+        #                     if parent_elem.find_element()
+        #                     # path[fill*="sorting-down-color"]
+        #                     # path[fill*="sorting-down-color"]
+        #                     actions = ActionChains(sb)
+        #                     actions.move_to_element(change_filter).click().perform()
+        #                     actions.reset_actions()
+        #                     sleep(1)
+        #                 logs.debug(f"Click on Changing filter is done")
+        #                 break
+        #         sleep(5)
+        #         break
+        #     except TimeoutException as _ex:
+        #         print(f"Try: {counter} | Exception: {repr(_ex)}")
+        #         sb.refresh()
+        ...
+        # get Markets list
+        # //div[@class="css-vlibs4"]
+        logs.info(f"Getting Markets list")
+        print(f"Getting Markets list")
+        for counter in range(3):
+            try:
+                xpath = '//div[@class="css-vlibs4"]'
+                WebDriverWait(sb, poll_frequency=1, timeout=10).until(
+                    EC.presence_of_element_located((By.XPATH, xpath))
+                )
+                markets_divs = sb.find_elements(By.XPATH, xpath)
+
+                for market in markets_divs:
+                    market_css = 'div.css-17wnpgm'
+                    symbol = market.find_element(By.CSS_SELECTOR, market_css).text.strip()
+                    print(symbol, end=' ')
+                    if ("USD" not in symbol) and (symbol not in markets_list):
+                        markets_list.append(symbol)
+                        print("added", end="")
+                    print()
+                break
+
+            except TimeoutException as _ex:
+                print(f"Try: {counter} | Exception: {repr(_ex)}")
+                sb.refresh()
+
+    print("\nSymbol list")
+    print_compact_list(markets_list)
+
+    # Saving to file
+    with open(symbols_path, 'w') as f:
+        f.write(str(markets_list))
+
+
+def trading_data(sh: SeleniumHandler, lh: LogHandler):
     sb = sh.browser
     logs = lh.logger
     base_path = str(__file__)[:len(__file__) - len(os.path.basename(str(__file__))) - 1]
@@ -105,56 +230,9 @@ def script_process(sh: SeleniumHandler, lh: LogHandler):
             print(f"Try: {counter} | Exception: {repr(_ex)}")
             sb.refresh()
 
-    # print_compact_list(symbols_list, cols_count=5)
-
     # Saving to file
-
     with open(symbols_path, 'w') as f:
         f.write(str(symbols_list))
-
-    # # open url https://www.binance.com/en/markets/spot
-    # for counter in range(3):
-    #     url = 'https://www.binance.com/en/markets/spot'
-    #     try:
-    #         logs.info(f"Loading URL:{url}")
-    #         print(f"Loading URL:{url}")
-    #         sb.get(url)
-    #         # while sb.execute_script("return document.readyState;") != "complete":
-    #         #     sleep(0.5)
-    #         #     print('.', end='')
-    #
-    #         logs.debug(f"URL is loaded:{url}")
-    #         break
-    #     except WebDriverException as _ex:
-    #         sleep(2)
-    #         print(f"Try: {counter} | Exception: {repr(_ex)}")
-    #         sh.reinitialize()
-    #         sb = sh.browser
-    #
-    # # get Markets list
-    # # //div[@class="css-vlibs4"]
-    # logs.info(f"Getting Markets list")
-    # print(f"Getting Markets list")
-    # markets_list = []
-    # for counter in range(3):
-    #     try:
-    #         xpath = '//div[@class="css-vlibs4"]'
-    #         WebDriverWait(sb, poll_frequency=1, timeout=10).until(
-    #             EC.presence_of_element_located((By.XPATH, xpath))
-    #         )
-    #         markets_divs = sb.find_elements(By.XPATH, xpath)
-    #
-    #         for market in markets_divs:
-    #             market_css = 'div.css-17wnpgm'
-    #             symbol = market.find_element(By.CSS_SELECTOR, market_css).text.strip()
-    #             if not "USD" in symbol:
-    #                 markets_list.append(symbol)
-    #         break
-    #
-    #     except TimeoutException as _ex:
-    #         print(f"Try: {counter} | Exception: {repr(_ex)}")
-    #         sb.refresh()
-    # print(markets_list)
 
     # # close modal container
     # # print(sb.find_element(By.CSS_SELECTOR, ".custom-modal-container"))

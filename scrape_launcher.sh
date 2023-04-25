@@ -11,7 +11,6 @@ err_exit(){
 # Get the option
 r_key=false
 
-str_param=""
 printf "%s " "Params: "
 while [ "$#" -gt 0 ]
 do
@@ -19,32 +18,6 @@ do
    -f|--freeze)
       r_key=true
       printf "%s " " freeze;"
-      ;;
-   --no-vnc)
-      no_vnc=true
-      str_param+="--no-vnc $no_vnc "
-      printf "%s " " --no-vnc='$no_vnc';"
-      ;;
-   --rebuild)
-      rebuild=true
-      str_param+="--rebuild $rebuild "
-      printf "%s " " rebuild='$rebuild';"
-      ;;
-   --id)
-      shift
-      id="$1"
-      str_param+="--id $id "
-      printf "%s " " id=$id;"
-      ;;
-     --test)
-      test="--test"
-      str_param+="$test "
-      printf "%s " "$test;"
-      ;;
-     --force-url)
-      force_url="--force-url"
-      str_param+="$force_url "
-      printf "%s " " $force_url';"
       ;;
    -*)
       echo "Invalid option '$1'. Use -h|--help to see the valid options" >&2

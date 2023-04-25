@@ -7,9 +7,89 @@ from random import randint
 from decimal import Decimal, getcontext, ROUND_CEILING, ROUND_UP, ROUND_HALF_UP, ROUND_HALF_EVEN, ROUND_HALF_DOWN
 import time
 
-side_test_list = ["BUY", "SELL"]
-side_test = side_test_list[randint(0, len(side_test_list) - 1)]
-print(side_test)
+
+def decimal_rounding(decimal_value, value_for_round="0.00000000", int_round=False, rounding=ROUND_HALF_UP):
+    if int_round:
+        return Decimal(decimal_value) // Decimal(value_for_round) * Decimal(value_for_round)
+    else:
+        return Decimal(decimal_value).quantize(Decimal(value_for_round), rounding=rounding)
+
+"""
+             Pending orders created (profit_percent: 0.6)                                  
+Buy:      Price: 12.68700000  | Quantity: 0.80000000    |    Cost: 10.14900000             
+Sell:     Price: 12.76300000  | Quantity: 0.80000000    |    Cost: 10.21000000
+                
+                Orders info (profit_percent: 0.75)
+Buy:      Price: 75.70000000  | Quantity: 0.14700000    |    Cost: 11.10000000
+Sell:     Price: 76.30000000  | Quantity: 0.14700000    |    Cost: 11.20000000
+
+                Orders info (profit_percent: 0.55)
+Buy:      Price: 0.23500000  | Quantity: 47.20000000    |    Cost: 11.09200000
+Sell:     Price: 0.23630000  | Quantity: 47.20000000    |    Cost: 11.15330000
+"""
+custom_buy_div = 0.1
+custom_profit_percent = 0.6
+custom_profit_percent = custom_profit_percent + 0.15
+buy_profit_percent = 1 - (custom_profit_percent * custom_buy_div) / 100
+sell_profit_percent = 1 + (custom_profit_percent * (1 - custom_buy_div)) / 100
+
+current_state = {
+    "order_book_bid_current_price": "0.2355"
+}
+
+filters = {
+    "PRICE_FILTER_tickSize": "0.0001",
+    "LOT_SIZE_stepSize": "0.1"
+}
+purchase_cost = "20.1"
+
+buy_price = Decimal(current_state['order_book_bid_current_price']) * Decimal(buy_profit_percent)
+buy_price = decimal_rounding(buy_price, filters['PRICE_FILTER_tickSize'], int_round=True)
+
+buy_quantity = Decimal(purchase_cost) / Decimal(current_state['order_book_bid_current_price'])
+buy_quantity = decimal_rounding(buy_quantity, filters['LOT_SIZE_stepSize'], int_round=True)
+buy_quantity += Decimal(filters['LOT_SIZE_stepSize'])
+
+sell_quantity = Decimal(buy_quantity) * Decimal(0.9985)
+sell_quantity = decimal_rounding(sell_quantity, filters['LOT_SIZE_stepSize'], int_round=True)
+sell_quantity += Decimal(filters['LOT_SIZE_stepSize'])
+
+
+buy_cost = Decimal(buy_price) * Decimal(buy_quantity)
+buy_cost = decimal_rounding(buy_cost, filters['PRICE_FILTER_tickSize'], int_round=True)
+
+sell_price = Decimal(current_state['order_book_bid_current_price']) * Decimal(sell_profit_percent)
+sell_price = decimal_rounding(sell_price, filters['PRICE_FILTER_tickSize'], int_round=True)
+
+sell_cost = Decimal(sell_price) * Decimal(sell_quantity)
+sell_cost = decimal_rounding(sell_cost, filters['PRICE_FILTER_tickSize'], int_round=True)
+
+buy_order_to_db = {
+    "symbol": str("symbol"),
+    "price": str(buy_price),
+    "origQty": str(buy_quantity),
+    "cost": str(buy_cost),
+    "side": str('BUY'),
+    "workingTime": int(time.time() * 1000 // 1),
+}
+sell_order_to_db = {
+    "symbol": str("symbol"),
+    "price": str(sell_price),
+    "origQty": str(sell_quantity),
+    "cost": str(sell_cost),
+    "side": str('SELL'),
+    "workingTime": int(time.time() * 1000 // 1),
+}
+print(buy_order_to_db)
+print(sell_order_to_db)
+print(((Decimal(buy_order_to_db["origQty"]) - Decimal(sell_order_to_db["origQty"])) / Decimal(buy_order_to_db["origQty"])) > Decimal("0.001"))
+print((Decimal(buy_order_to_db["origQty"]) - Decimal(sell_order_to_db["origQty"])) / Decimal(buy_order_to_db["origQty"]))
+print((Decimal(buy_order_to_db["price"]) - Decimal(current_state['order_book_bid_current_price'])) / Decimal(buy_order_to_db["price"]))
+print((Decimal(sell_order_to_db["price"]) - Decimal(current_state['order_book_bid_current_price'])) / Decimal(buy_order_to_db["price"]))
+print((Decimal(buy_order_to_db["cost"]) - Decimal(sell_order_to_db["cost"])) / Decimal(buy_order_to_db["cost"]))
+# side_test_list = ["BUY", "SELL"]
+# side_test = side_test_list[randint(0, len(side_test_list) - 1)]
+# print(side_test)
 #
 # base_path = str(__file__)[:len(__file__) - len(os.path.basename(str(__file__))) - 1]
 # print(base_path)
