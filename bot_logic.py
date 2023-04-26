@@ -34,6 +34,9 @@ db_dir = f"{base_dir}databases/"
 
 
 def delete_last_print_lines(n=1):
+    # print("Entering to loop")
+    # delete_last_print_lines()
+    # print(f"{list_index}/{len(symbols_list)}")
     CURSOR_UP_ONE = '\x1b[1A'
     ERASE_LINE = '\x1b[2K'
     for _ in range(n):
@@ -807,11 +810,16 @@ def print_kline(kline):
     return f'\n{Tags.LightBlue}{resp_type_pr}{Tags.ResetAll}\n{output}'
 
 
-def checking_symbol_for_monitoring(klines):
+def checking_symbol_for_monitoring(klines, stdout=True):
     """
 
-    :param klines:      | len(klines) > 48 -> default 96
-    :return:
+    :param klines:                      | len(klines) > 48 -> default 96
+    :type stdout: bool                  | if print result
+    :return: int in [0, 1, 2, -<int>]   |
+                    0 - not growing
+                    1 - growing but has no space for growing
+                    2 - growing and has space for growing
+                    -<int> - not growing but has space for growing
     """
     # TODO: knives are bad
     #
@@ -825,16 +833,15 @@ def checking_symbol_for_monitoring(klines):
     sum_24_48 = kline_sum(klines[-48:-24])
     sum_48_rest = kline_sum(klines[:-48])
 
-    output = f"\n{print_kline(sum_4)}" \
-             f"\n{print_kline(sum_12_24)}" \
-             f"\n{print_kline(sum_24_48)}" \
-             f"\n{print_kline(sum_48_rest)}"
-
     # Conditions to mark as growing
+    ...
+    # # Top border is growing
     key_low = (
             (Decimal(sum_4["low_price"]) > (Decimal(sum_4_12["low_price"]) * Decimal("1.02"))) and
             (Decimal(sum_4_12["low_price"]) > (Decimal(sum_12_24["low_price"]) * Decimal("1.02")))
     )
+
+    # # Bottom border is growing
     key_high = (
             (Decimal(sum_4["high_price"]) > (Decimal(sum_4_12["high_price"]) * Decimal("0.995"))) and
             (Decimal(sum_4_12["high_price"]) > (Decimal(sum_12_24["high_price"]) * Decimal("0.995")))
@@ -843,10 +850,15 @@ def checking_symbol_for_monitoring(klines):
     # Conditions to mark as it has space for growing
     higher = klines[-1]["high_price"]
     key_space_for_growing = 0
+
+    # # The rest klines is large then current kline
+    key_space_for_growing_print = ""
     if (Decimal(sum_48_rest["high_price"]) * Decimal("0.99")) > Decimal(klines[-1]["high_price"]):
         key_space_for_growing = -4
         key_space_for_growing_print = f"Max in {len(klines)}kl <-> 48kl"
         higher = sum_48_rest["high_price"]
+
+    # # The klines up to 48 is large then current kline
     if (
             ((Decimal(sum_24_48["high_price"]) * Decimal("0.99")) > Decimal(klines[-1]["high_price"])) and
             (Decimal(sum_24_48["high_price"]) > Decimal(sum_48_rest["high_price"]))
@@ -854,14 +866,18 @@ def checking_symbol_for_monitoring(klines):
         key_space_for_growing = -3
         key_space_for_growing_print = f"Max in 48kl <-> 24kl"
         higher = sum_24_48["high_price"]
-    elif (
+
+    # # The klines up to 24 is large then current kline
+    if (
             ((Decimal(sum_12_24["high_price"]) * Decimal("0.99")) > Decimal(klines[-1]["high_price"])) and
             (Decimal(sum_12_24["high_price"]) > Decimal(sum_24_48["high_price"]))
     ):
         key_space_for_growing = -2
         key_space_for_growing_print = f"Max in 24kl <-> 4kl"
         higher = sum_12_24["high_price"]
-    elif (
+
+    # # The klines up to 4 is large then current kline
+    if (
             ((Decimal(sum_4["high_price"]) * Decimal("0.99")) > Decimal(klines[-1]["high_price"])) and
             (Decimal(sum_4["high_price"]) > Decimal(sum_12_24["high_price"]))
     ):
@@ -870,27 +886,41 @@ def checking_symbol_for_monitoring(klines):
         higher = sum_4["high_price"]
 
     # Output and return
+    ...
+    # # Difference between higher price and current price
     dif = (Decimal(higher) - Decimal(klines[-1]["high_price"])) / Decimal(klines[-1]["high_price"])
     dif *= Decimal("100")
     dif = decimal_rounding(dif, '0.00')
     header = f"\n---------- {datetime.utcnow()} ---------- [{klines[0]['symbol']}] ----------"
+
+    # # Growing but has no space for growing
     if key_high and key_low and (key_space_for_growing >= -1):
-        print(header)
-        print(f"{Tags.Red}Growing of high prices{Tags.ResetAll} AND {Tags.Red}Growing of low prices{Tags.ResetAll}")
-        print("key_space_for_growing = False", end=" ")
-        if key_space_for_growing == -1:
-            print(f"{Tags.LightYellow}{key_space_for_growing_print}{Tags.ResetAll}")
-        else:
-            print()
-        print(f'{sum_48_rest["high_price"]} >> {klines[-1]["high_price"]} | Dif: {dif}%')
-        return True
+        if stdout:
+            print(header)
+            print(f"{Tags.Red}Growing of high prices{Tags.ResetAll} AND {Tags.Red}Growing of low prices{Tags.ResetAll}")
+            print("key_space_for_growing = False", end=" ")
+            if key_space_for_growing == -1:
+                print(f"{Tags.LightYellow}{key_space_for_growing_print}{Tags.ResetAll}")
+            else:
+                print()
+            print(f'{sum_48_rest["high_price"]} >> {klines[-1]["high_price"]} | Dif: {dif}%')
+        return 1
+
+    # # Growing and has space for growing
     elif key_high and key_low and (key_space_for_growing < -1):
-        print(header)
-        print(f"{Tags.Red}Growing of high prices{Tags.ResetAll} AND {Tags.Red}Growing of low prices{Tags.ResetAll}")
-        print(f"{Tags.Red}key_space_for_growing = True{Tags.ResetAll} | {key_space_for_growing_print} | Dif: {dif}% ")
-        return True
+        if stdout:
+            print(header)
+            print(f"{Tags.Red}Growing of high prices{Tags.ResetAll} AND {Tags.Red}Growing of low prices{Tags.ResetAll}")
+            print(f"{Tags.Red}key_space_for_growing = True{Tags.ResetAll} | {key_space_for_growing_print} | Dif: {dif}% ")
+        return 2
+
+    # # Not growing but has space for growing
+    elif key_space_for_growing < -1:
+        return key_space_for_growing
+
+    # # Not growing
     else:
-        return False
+        return 0
 
 
 def monitoring_symbol(sum_kline, filters, monitoring_time=30):
@@ -1092,7 +1122,7 @@ def checking_symbol_history(symbol):
              f"{Tags.BackgroundDarkGray}{buy_quantity_part} | {sell_quantity_part}{Tags.ResetAll}" \
              f" :sell_quantity_part -> {if_sides_disbalance}"
 
-    # More preferable conditions are located above
+    # Conditions for decision // More preferable conditions are located above
     if if_large_volume and if_small_amount_of_trades_number and if_two_last_changing_is_large and if_sides_disbalance:
         print(f"\n{Tags.BackgroundLightYellow}{klines[0]['symbol']}{Tags.ResetAll}")
         print(output)
@@ -1294,6 +1324,7 @@ def id_arg_6():
 
 def id_arg_7(test_key=False):
 
+    # Read symbols for tests or else
     if test_key:
         if os.path.exists("getting_data/test_symbols.txt"):
             with open('getting_data/test_symbols.txt', 'r') as f:
@@ -1313,21 +1344,44 @@ def id_arg_7(test_key=False):
             symbols_list_form_file = f.read()
             symbols_list_form_file = [x.strip("[',]").strip() for x in symbols_list_form_file.split(' ')]
 
-    # Creating symbol pairs list
+    # Creating symbols list
     symbols_list = []
     for symbol in symbols_list_form_file:
         symbol += "USDT"
         symbols_list.append(symbol)
 
+    # Creating SQLiteHandler for all symbols
+    print(f"\n{Tags.LightYellow}Creating SQLiteHandler{Tags.ResetAll}")
+    print("Amount of symbols:", len(symbols_list))
+    print("Entering to loop")
+    for symbol, list_index in zip(symbols_list, range(len(symbols_list))):
+        delete_last_print_lines()
+        db_name = create_db_name(symbol, test_key=test_key)
+        sqlh_symbol = SQLiteHandler(db_name=db_name, db_dir=db_dir, check_same_thread=False)
+        sqlh_dict.update({symbol: sqlh_symbol})
+        sqlh_dict[symbol].create_all_tables(tables.create_all_tables)
+        print(f"{list_index}/{len(symbols_list)}")
+    delete_last_print_lines()
+
+    # Creating stream _execution_reports
+    print(f"\n{Tags.LightYellow}Creating stream _execution_reports{Tags.ResetAll}")
+    stream_id = randint(1, 99999)
+    print(f"Stream: _execution_reports; ID: {stream_id}")
+    web_socket.kline_output_key = False
+    web_socket.stream_execution_reports(sqlh_dict=sqlh_dict)
+    sleep(0.3)
+
     # Checking growing trend
     print(f"\n{Tags.LightYellow}Checking growing trend{Tags.ResetAll}")
     print("Amount of symbols:", len(symbols_list))
-    symbols_for_pending = symbols_list
-    symbols_list_to_delete = []
-    print("Enter to loop")
+    symbols_score = {}
+    print("Enter to checking loop")
     for symbol, list_index in zip(symbols_list, range(1, len(symbols_list) + 1)):
         try:
+            score = 0
             delete_last_print_lines()
+
+            # # Checkin 1h klines
             klines_long_1h = spot_client.get_kline(
                 symbol=symbol,
                 interval='1h',
@@ -1335,8 +1389,11 @@ def id_arg_7(test_key=False):
                 output_key=False,
                 if_sum=False
             )
-            if_monitoring = checking_symbol_for_monitoring(klines_long_1h["klines"])
-            if if_monitoring:
+            checking_score_1h = checking_symbol_for_monitoring(klines_long_1h["klines"], stdout=False)
+
+            # # If Checkin 1h klines result is good then checking 4h klines for space for growing
+            if checking_score_1h > 0:
+                score += checking_score_1h
                 klines_long_4h = spot_client.get_kline(
                     symbol=symbol,
                     interval='4h',
@@ -1344,58 +1401,70 @@ def id_arg_7(test_key=False):
                     output_key=False,
                     if_sum=False
                 )
-                if_monitoring = checking_symbol_for_monitoring(klines_long_4h["klines"])
-                if not if_monitoring:
-                    print("if_monitoring for 4h klines is False")
-                else:
-                    print(f"{Tags.Blue}------------------------ ^^^^^^^^^^^^^^ ------------------------{Tags.ResetAll}")
-            if not if_monitoring:
-                symbols_list_to_delete.append(symbol)
+                checking_score_4h = checking_symbol_for_monitoring(klines_long_4h["klines"], stdout=False)
+
+                # # If there is space for growing, mark this symbol
+                if checking_score_4h < 0:
+                    score += 1
+                    # print(f"{Tags.Blue}------- Score {score} -------------- ^^^^^^^^^^^^^^ ------------{Tags.ResetAll}")
+
+            symbols_score.update({symbol: score})
             print(f"{list_index}/{len(symbols_list)}")
             sleep(0.1)
         except ClientError as _ex:
             print(f"\n{Tags.LightYellow}[WARNING] Getting long periond 1h klines > {_ex.error_message} > "
                   f"{symbol} is removed from the symbol_list{Tags.ResetAll}")
-            symbols_list_to_delete.append(symbol)
-
     delete_last_print_lines()
-    sleep(15)
+
+    symbols_to_trade = []
+
+    # Print symbols with score > 0
+    print()
+    for symbol in symbols_score.keys():
+        if symbols_score[symbol] == 3:
+            print(f"Symbol: {str(symbol):>10} -> {Tags.Red}score: {symbols_score[symbol]}{Tags.ResetAll}")
+            symbols_to_trade.append(symbol)
+    for symbol in symbols_score.keys():
+        if symbols_score[symbol] == 2:
+            print(f"Symbol: {str(symbol):>10} -> {Tags.Green}score: {symbols_score[symbol]}{Tags.ResetAll}")
+            symbols_to_trade.append(symbol)
+    for symbol in symbols_score.keys():
+        if symbols_score[symbol] == 1:
+            print(f"Symbol: {str(symbol):>10} -> {Tags.DarkGray}score: {symbols_score[symbol]}{Tags.ResetAll}")
 
     # Getting filters
     print(f"\n{Tags.LightYellow}Getting filters{Tags.ResetAll}")
+    print("Amount of symbols:", len(symbols_to_trade))
+    print("Entering to loop")
+    # TODO: save and read from db or .json
     filters_list = {}
     symbols_list_to_delete = []
-    for symbol in symbols_list:
+    for symbol, list_index in zip(symbols_to_trade, range(len(symbols_to_trade))):
+        delete_last_print_lines()
         try:
             filters = spot_client.get_exchange_info(symbol)
             filters_list.update({symbol: filters})
-            print(f"Filters for {symbol} are got")
+            # print(f"Filters for {symbol} are got")
         except ClientError as _ex:
             print(f"\n{Tags.LightYellow}[WARNING] Getting filters > {_ex.error_message} > "
                   f"{symbol} is removed from the symbol_list{Tags.ResetAll}")
             symbols_list_to_delete.append(symbol)
             continue
-    symbols_list = [item for item in symbols_list if item not in symbols_list_to_delete]
+        print(f"{list_index}/{len(symbols_to_trade)}")
+    symbols_to_trade = [item for item in symbols_to_trade if item not in symbols_list_to_delete]
     spot_client.filters_list = filters_list
+    delete_last_print_lines()
 
-    # Creating SQLiteHandler for all symbols
-    for symbol in symbols_list:
-        db_name = create_db_name(symbol, test_key=test_key)
-        sqlh_symbol = SQLiteHandler(db_name=db_name, db_dir=db_dir, check_same_thread=False)
-        sqlh_dict.update({symbol: sqlh_symbol})
-        sqlh_dict[symbol].create_all_tables(tables.create_all_tables)
 
-    # Creating streams
-    print(f"\n{Tags.LightYellow}Creating streams{Tags.ResetAll}")
-
-    # Creating stream _execution_reports
-    stream_id = randint(1, 99999)
-    print(f"Stream: _execution_reports; ID: {stream_id}")
-    web_socket.kline_output_key = False
-    web_socket.stream_execution_reports(sqlh_dict=sqlh_dict)
-    sleep(0.3)
+    print("\nsleeping 15 secs")
+    sleep(15)
 
     # Creating streams _kline_history
+    print(f"\n{Tags.LightYellow}Creating streams _kline_history{Tags.ResetAll}")
+    print("Amount of symbols:", len(symbols_to_trade))
+    # print("Entering to loop")
+    # delete_last_print_lines()
+    # print(f"{list_index}/{len(symbols_list)}")
     for symbol in symbols_list:
         try:
             stream_id = randint(1, 99999)
@@ -1409,7 +1478,11 @@ def id_arg_7(test_key=False):
             symbols_list_to_delete.append(symbol)
     symbols_list = [item for item in symbols_list if item not in symbols_list_to_delete]
 
-    # Getting 1h klines
+    # Getting 1m klines
+    print("Amount of symbols:", len(symbols_list))
+    # print("Entering to loop")
+    # delete_last_print_lines()
+    # print(f"{list_index}/{len(symbols_list)}")
     sleep(3)
     print(f"\n{Tags.LightYellow}Getting 1h klines{Tags.ResetAll}")
     kline_1h_list = {}
