@@ -30,6 +30,62 @@ def print_compact_list(list_data, cols_count=4):
 # TODO: get all symbols and sort
 #   https://www.binance.com/bapi/margin/v1/public/margin/symbols
 
+def for_test(sh: SeleniumHandler, lh: LogHandler):
+    sb = sh.browser
+    logs = lh.logger
+    base_path = str(__file__)[:len(__file__) - len(os.path.basename(str(__file__))) - 1]
+    symbols_path = f"{base_path}/symbols.txt"
+    markets_list = []
+
+    # open url
+    for counter in range(3):
+        url = f'https://www.google.com/'
+        try:
+            logs.info(f"Loading URL:{url}")
+            print(f"Loading URL:{url}")
+            sb.get(url)
+            logs.debug(f"URL is loaded:{url}")
+            break
+        except WebDriverException as _ex:
+            sleep(2)
+            print(f"Try: {counter} | Exception: {repr(_ex)}")
+            sh.reinitialize()
+            sb = sh.browser
+
+    # Typing search string
+    css_selector = 'textarea[type*="search"]'
+    search_string = "cats"
+    for counter in range(3):
+        try:
+            WebDriverWait(sb, poll_frequency=1, timeout=10).until(EC.presence_of_element_located((By.CSS_SELECTOR, css_selector)))
+            search_input = sb.find_element(By.CSS_SELECTOR, css_selector)
+            actions = ActionChains(sb)
+            actions.move_to_element(search_input).click().perform()
+            actions.reset_actions()
+            search_input.send_keys(search_string)
+            actions.move_to_element(search_input).send_keys(Keys.ENTER).perform()
+            actions.reset_actions()
+            logs.debug(f"Typing search string is done")
+            break
+        except TimeoutException as _ex:
+            print(f"Try: {counter} | Exception: {repr(_ex)}")
+            sb.refresh()
+
+    # # Click on submit
+    # css_selector = 'input[type*="submit"]'
+    # for counter in range(3):
+    #     try:
+    #         WebDriverWait(sb, poll_frequency=1, timeout=10).until(EC.presence_of_element_located((By.CSS_SELECTOR, css_selector)))
+    #         submit_input = sb.find_element(By.CSS_SELECTOR, css_selector)
+    #         actions = ActionChains(sb)
+    #         actions.move_to_element(submit_input).click().perform()
+    #         actions.reset_actions()
+    #         logs.debug(f"Click on submit is done")
+    #         break
+    #     except TimeoutException as _ex:
+    #         print(f"Try: {counter} | Exception: {repr(_ex)}")
+    #         sb.refresh()
+
 
 def markets_overview(sh: SeleniumHandler, lh: LogHandler, page_counter_limit=1):
     sb = sh.browser
@@ -145,7 +201,7 @@ def markets_overview(sh: SeleniumHandler, lh: LogHandler, page_counter_limit=1):
                 sb.refresh()
 
     print("\nSymbol list")
-    print_compact_list(markets_list)
+    print_compact_list(markets_list, cols_count=8)
 
     # Saving to file
     with open(symbols_path, 'w') as f:
@@ -229,6 +285,9 @@ def trading_data(sh: SeleniumHandler, lh: LogHandler):
         except TimeoutException as _ex:
             print(f"Try: {counter} | Exception: {repr(_ex)}")
             sb.refresh()
+
+    print("\nSymbol list")
+    print_compact_list(symbols_list, cols_count=8)
 
     # Saving to file
     with open(symbols_path, 'w') as f:

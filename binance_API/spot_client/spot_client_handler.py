@@ -138,8 +138,11 @@ class SpotClient(Spot):
             )
 
         response_list = []
+        time_now = time.time()
         response_data = {
             "symbol": symbol,
+            "time": str(time_now * 1000),
+            "time_utc": str(datetime.utcfromtimestamp(time_now)),
             "start_time": response[0][0],
             "start_time_utc": str(datetime.utcfromtimestamp(int(int(response[0][0])) // 1000)),
             "close_time": response[-1][6],

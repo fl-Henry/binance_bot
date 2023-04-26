@@ -188,11 +188,17 @@ class WebsocketClient(SpotWebsocketClient):
             }
 
             # adding data to kline_history
-            if len(self.kline_history[response_data['symbol']]) > 60 - 1:
-                self.kline_history[response_data['symbol']] = [
-                    x for x in self.kline_history[response_data['symbol']][1:]
-                ]
-            self.kline_history[response_data['symbol']].append(response_data)
+            if len(self.kline_history[response_data['symbol']]) > 0:
+                if int(response_data['close_time']) > int(self.kline_history[response_data['symbol']][-1]["close_time"]):
+                    if len(self.kline_history[response_data['symbol']]) > 60 - 1:
+                        self.kline_history[response_data['symbol']] = [
+                            x for x in self.kline_history[response_data['symbol']][1:]
+                        ]
+                    self.kline_history[response_data['symbol']].append(response_data)
+                else:
+                    self.kline_history[response_data['symbol']][-1] = response_data
+            else:
+                self.kline_history[response_data['symbol']].append(response_data)
 
             # Creating output for print
             if (float(response_data['all_cost']) != 0) and self.kline_output_key:

@@ -33,6 +33,14 @@ base_dir = f"{base_path}/"
 db_dir = f"{base_dir}databases/"
 
 
+def delete_last_print_lines(n=1):
+    CURSOR_UP_ONE = '\x1b[1A'
+    ERASE_LINE = '\x1b[2K'
+    for _ in range(n):
+        sys.stdout.write(CURSOR_UP_ONE)
+        sys.stdout.write(ERASE_LINE)
+
+
 def decimal_rounding(decimal_value, value_for_round="0.00000000", int_round=False, rounding=ROUND_HALF_UP):
     if int_round:
         return Decimal(decimal_value) // Decimal(value_for_round) * Decimal(value_for_round)
@@ -765,6 +773,126 @@ def kline_params(kline, sum_kline):
     return kline_params
 
 
+def print_kline(kline):
+    output = f"[{kline['symbol']}] " \
+             f"Start: {kline['start_time_utc']:>20} | Close: {kline['close_time_utc']:>20}" \
+             f"\nALL : " \
+             f"Cost: {kline['all_cost']:>20} | " \
+             f"Qty: {kline['all_origQty']:>20}" \
+             f"\nBUY : " \
+             f"Cost: {kline['buy_cost']:>20} | " \
+             f"Qty: {kline['buy_origQty']:>20}" \
+             f"\nSELL: " \
+             f"Cost: {kline['sell_cost']:>20} | " \
+             f"Qty: {kline['sell_origQty']:>20}"
+
+    if kline['close_price'] >= kline["open_price"]:
+        output += f"\n-- UP ----" \
+                  f"\n-- {kline['high_price']} --:: {kline['close_price']} ::" \
+                  f":: {kline['open_price']} ::-- {kline['low_price']} --"
+    else:
+        output += f"\n-- DOWN --" \
+                  f"\n-- {kline['high_price']} --:: {kline['open_price']} ::" \
+                  f":: {kline['close_price']} ::-- {kline['low_price']} --"
+
+    try:
+        resp_type_pr = f'---- Kline ----------------------------------------- ' \
+                       f'{kline["time_utc"]:<20}' \
+                       f' ----'
+    except KeyError:
+        resp_type_pr = f'---- Kline ----------------------------------------- ' \
+                       f'{str(datetime.utcnow()):<20}' \
+                       f' ----'
+
+    return f'\n{Tags.LightBlue}{resp_type_pr}{Tags.ResetAll}\n{output}'
+
+
+def checking_symbol_for_monitoring(klines):
+    """
+
+    :param klines:      | len(klines) > 48 -> default 96
+    :return:
+    """
+    # TODO: knives are bad
+    #
+    # TODO: monitoring > order book > volume ?? > big bids > price to sell ??
+    ...
+
+    # Calculating kline's params
+    sum_4 = kline_sum(klines[-4:])
+    sum_4_12 = kline_sum(klines[-12:-4])
+    sum_12_24 = kline_sum(klines[-24:-4])
+    sum_24_48 = kline_sum(klines[-48:-24])
+    sum_48_rest = kline_sum(klines[:-48])
+
+    output = f"\n{print_kline(sum_4)}" \
+             f"\n{print_kline(sum_12_24)}" \
+             f"\n{print_kline(sum_24_48)}" \
+             f"\n{print_kline(sum_48_rest)}"
+
+    # Conditions to mark as growing
+    key_low = (
+            (Decimal(sum_4["low_price"]) > (Decimal(sum_4_12["low_price"]) * Decimal("1.02"))) and
+            (Decimal(sum_4_12["low_price"]) > (Decimal(sum_12_24["low_price"]) * Decimal("1.02")))
+    )
+    key_high = (
+            (Decimal(sum_4["high_price"]) > (Decimal(sum_4_12["high_price"]) * Decimal("0.995"))) and
+            (Decimal(sum_4_12["high_price"]) > (Decimal(sum_12_24["high_price"]) * Decimal("0.995")))
+    )
+
+    # Conditions to mark as it has space for growing
+    higher = klines[-1]["high_price"]
+    key_space_for_growing = 0
+    if (Decimal(sum_48_rest["high_price"]) * Decimal("0.99")) > Decimal(klines[-1]["high_price"]):
+        key_space_for_growing = -4
+        key_space_for_growing_print = f"Max in {len(klines)}kl <-> 48kl"
+        higher = sum_48_rest["high_price"]
+    if (
+            ((Decimal(sum_24_48["high_price"]) * Decimal("0.99")) > Decimal(klines[-1]["high_price"])) and
+            (Decimal(sum_24_48["high_price"]) > Decimal(sum_48_rest["high_price"]))
+    ):
+        key_space_for_growing = -3
+        key_space_for_growing_print = f"Max in 48kl <-> 24kl"
+        higher = sum_24_48["high_price"]
+    elif (
+            ((Decimal(sum_12_24["high_price"]) * Decimal("0.99")) > Decimal(klines[-1]["high_price"])) and
+            (Decimal(sum_12_24["high_price"]) > Decimal(sum_24_48["high_price"]))
+    ):
+        key_space_for_growing = -2
+        key_space_for_growing_print = f"Max in 24kl <-> 4kl"
+        higher = sum_12_24["high_price"]
+    elif (
+            ((Decimal(sum_4["high_price"]) * Decimal("0.99")) > Decimal(klines[-1]["high_price"])) and
+            (Decimal(sum_4["high_price"]) > Decimal(sum_12_24["high_price"]))
+    ):
+        key_space_for_growing = -1
+        key_space_for_growing_print = f"Max in 4kl <-> now"
+        higher = sum_4["high_price"]
+
+    # Output and return
+    dif = (Decimal(higher) - Decimal(klines[-1]["high_price"])) / Decimal(klines[-1]["high_price"])
+    dif *= Decimal("100")
+    dif = decimal_rounding(dif, '0.00')
+    header = f"\n---------- {datetime.utcnow()} ---------- [{klines[0]['symbol']}] ----------"
+    if key_high and key_low and (key_space_for_growing >= -1):
+        print(header)
+        print(f"{Tags.Red}Growing of high prices{Tags.ResetAll} AND {Tags.Red}Growing of low prices{Tags.ResetAll}")
+        print("key_space_for_growing = False", end=" ")
+        if key_space_for_growing == -1:
+            print(f"{Tags.LightYellow}{key_space_for_growing_print}{Tags.ResetAll}")
+        else:
+            print()
+        print(f'{sum_48_rest["high_price"]} >> {klines[-1]["high_price"]} | Dif: {dif}%')
+        return True
+    elif key_high and key_low and (key_space_for_growing < -1):
+        print(header)
+        print(f"{Tags.Red}Growing of high prices{Tags.ResetAll} AND {Tags.Red}Growing of low prices{Tags.ResetAll}")
+        print(f"{Tags.Red}key_space_for_growing = True{Tags.ResetAll} | {key_space_for_growing_print} | Dif: {dif}% ")
+        return True
+    else:
+        return False
+
+
 def monitoring_symbol(sum_kline, filters, monitoring_time=30):
     """
     :param monitoring_time: int     | sec
@@ -1190,6 +1318,48 @@ def id_arg_7(test_key=False):
     for symbol in symbols_list_form_file:
         symbol += "USDT"
         symbols_list.append(symbol)
+
+    # Checking growing trend
+    print(f"\n{Tags.LightYellow}Checking growing trend{Tags.ResetAll}")
+    print("Amount of symbols:", len(symbols_list))
+    symbols_for_pending = symbols_list
+    symbols_list_to_delete = []
+    print("Enter to loop")
+    for symbol, list_index in zip(symbols_list, range(1, len(symbols_list) + 1)):
+        try:
+            delete_last_print_lines()
+            klines_long_1h = spot_client.get_kline(
+                symbol=symbol,
+                interval='1h',
+                limit=96,
+                output_key=False,
+                if_sum=False
+            )
+            if_monitoring = checking_symbol_for_monitoring(klines_long_1h["klines"])
+            if if_monitoring:
+                klines_long_4h = spot_client.get_kline(
+                    symbol=symbol,
+                    interval='4h',
+                    limit=96,
+                    output_key=False,
+                    if_sum=False
+                )
+                if_monitoring = checking_symbol_for_monitoring(klines_long_4h["klines"])
+                if not if_monitoring:
+                    print("if_monitoring for 4h klines is False")
+                else:
+                    print(f"{Tags.Blue}------------------------ ^^^^^^^^^^^^^^ ------------------------{Tags.ResetAll}")
+            if not if_monitoring:
+                symbols_list_to_delete.append(symbol)
+            print(f"{list_index}/{len(symbols_list)}")
+            sleep(0.1)
+        except ClientError as _ex:
+            print(f"\n{Tags.LightYellow}[WARNING] Getting long periond 1h klines > {_ex.error_message} > "
+                  f"{symbol} is removed from the symbol_list{Tags.ResetAll}")
+            symbols_list_to_delete.append(symbol)
+
+    delete_last_print_lines()
+    sleep(15)
 
     # Getting filters
     print(f"\n{Tags.LightYellow}Getting filters{Tags.ResetAll}")

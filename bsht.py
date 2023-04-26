@@ -14,6 +14,42 @@ def decimal_rounding(decimal_value, value_for_round="0.00000000", int_round=Fals
     else:
         return Decimal(decimal_value).quantize(Decimal(value_for_round), rounding=rounding)
 
+
+"""
+If you can’t use this approach, you can define:
+
+    CURSOR_UP_ONE = '\x1b[1A' 
+    ERASE_LINE = '\x1b[2K' 
+
+and use them by calling sys.stdout.write.
+
+    import sys 
+    sys.stdout.write(CURSOR_UP_ONE) 
+    sys.stdout.write(ERASE_LINE) 
+
+If you’re using it a lot, you can define your own function:
+
+    def delete_last_lines(n=1): 
+        for _ in range(n): 
+            sys.stdout.write(CURSOR_UP_ONE) 
+            sys.stdout.write(ERASE_LINE) 
+"""
+
+print(f"{datetime.datetime.utcnow()}")
+print(f"{str(datetime.datetime.utcnow()):>10}")
+
+# list_items = [x for x in range(10)]
+# print(list_items)
+# print(list_items[-1])
+# print(list_items[-2])
+print(1)
+print(2, end="\n")
+print(end="\r")
+print(3333, end="\r")
+print(1234)
+print(" ", end="\r")
+print(3.1)
+print(4)
 """
              Pending orders created (profit_percent: 0.6)                                  
 Buy:      Price: 12.68700000  | Quantity: 0.80000000    |    Cost: 10.14900000             
@@ -27,66 +63,69 @@ Sell:     Price: 76.30000000  | Quantity: 0.14700000    |    Cost: 11.20000000
 Buy:      Price: 0.23500000  | Quantity: 47.20000000    |    Cost: 11.09200000
 Sell:     Price: 0.23630000  | Quantity: 47.20000000    |    Cost: 11.15330000
 """
-custom_buy_div = 0.1
-custom_profit_percent = 0.6
-custom_profit_percent = custom_profit_percent + 0.15
-buy_profit_percent = 1 - (custom_profit_percent * custom_buy_div) / 100
-sell_profit_percent = 1 + (custom_profit_percent * (1 - custom_buy_div)) / 100
+# custom_buy_div = 0.1
+# custom_profit_percent = 0.6
+# custom_profit_percent = custom_profit_percent + 0.15
+# buy_profit_percent = 1 - (custom_profit_percent * custom_buy_div) / 100
+# sell_profit_percent = 1 + (custom_profit_percent * (1 - custom_buy_div)) / 100
+#
+# current_state = {
+#     "order_book_bid_current_price": "0.2355"
+# }
+#
+# filters = {
+#     "PRICE_FILTER_tickSize": "0.0001",
+#     "LOT_SIZE_stepSize": "0.1"
+# }
+# purchase_cost = "20.1"
+#
+# buy_price = Decimal(current_state['order_book_bid_current_price']) * Decimal(buy_profit_percent)
+# buy_price = decimal_rounding(buy_price, filters['PRICE_FILTER_tickSize'], int_round=True)
+#
+# buy_quantity = Decimal(purchase_cost) / Decimal(current_state['order_book_bid_current_price'])
+# buy_quantity = decimal_rounding(buy_quantity, filters['LOT_SIZE_stepSize'], int_round=True)
+# buy_quantity += Decimal(filters['LOT_SIZE_stepSize'])
+#
+# sell_quantity = Decimal(buy_quantity) * Decimal(0.9985)
+# sell_quantity = decimal_rounding(sell_quantity, filters['LOT_SIZE_stepSize'], int_round=True)
+# sell_quantity += Decimal(filters['LOT_SIZE_stepSize'])
+#
+#
+# buy_cost = Decimal(buy_price) * Decimal(buy_quantity)
+# buy_cost = decimal_rounding(buy_cost, filters['PRICE_FILTER_tickSize'], int_round=True)
+#
+# sell_price = Decimal(current_state['order_book_bid_current_price']) * Decimal(sell_profit_percent)
+# sell_price = decimal_rounding(sell_price, filters['PRICE_FILTER_tickSize'], int_round=True)
+#
+# sell_cost = Decimal(sell_price) * Decimal(sell_quantity)
+# sell_cost = decimal_rounding(sell_cost, filters['PRICE_FILTER_tickSize'], int_round=True)
+#
+# buy_order_to_db = {
+#     "symbol": str("symbol"),
+#     "price": str(buy_price),
+#     "origQty": str(buy_quantity),
+#     "cost": str(buy_cost),
+#     "side": str('BUY'),
+#     "workingTime": int(time.time() * 1000 // 1),
+# }
+# sell_order_to_db = {
+#     "symbol": str("symbol"),
+#     "price": str(sell_price),
+#     "origQty": str(sell_quantity),
+#     "cost": str(sell_cost),
+#     "side": str('SELL'),
+#     "workingTime": int(time.time() * 1000 // 1),
+# }
+# print(buy_order_to_db)
+# print(sell_order_to_db)
+# print(((Decimal(buy_order_to_db["origQty"]) - Decimal(sell_order_to_db["origQty"])) / Decimal(buy_order_to_db["origQty"])) > Decimal("0.001"))
+# print((Decimal(buy_order_to_db["origQty"]) - Decimal(sell_order_to_db["origQty"])) / Decimal(buy_order_to_db["origQty"]))
+# print((Decimal(buy_order_to_db["price"]) - Decimal(current_state['order_book_bid_current_price'])) / Decimal(buy_order_to_db["price"]))
+# print((Decimal(sell_order_to_db["price"]) - Decimal(current_state['order_book_bid_current_price'])) / Decimal(buy_order_to_db["price"]))
+# print((Decimal(buy_order_to_db["cost"]) - Decimal(sell_order_to_db["cost"])) / Decimal(buy_order_to_db["cost"]))
 
-current_state = {
-    "order_book_bid_current_price": "0.2355"
-}
-
-filters = {
-    "PRICE_FILTER_tickSize": "0.0001",
-    "LOT_SIZE_stepSize": "0.1"
-}
-purchase_cost = "20.1"
-
-buy_price = Decimal(current_state['order_book_bid_current_price']) * Decimal(buy_profit_percent)
-buy_price = decimal_rounding(buy_price, filters['PRICE_FILTER_tickSize'], int_round=True)
-
-buy_quantity = Decimal(purchase_cost) / Decimal(current_state['order_book_bid_current_price'])
-buy_quantity = decimal_rounding(buy_quantity, filters['LOT_SIZE_stepSize'], int_round=True)
-buy_quantity += Decimal(filters['LOT_SIZE_stepSize'])
-
-sell_quantity = Decimal(buy_quantity) * Decimal(0.9985)
-sell_quantity = decimal_rounding(sell_quantity, filters['LOT_SIZE_stepSize'], int_round=True)
-sell_quantity += Decimal(filters['LOT_SIZE_stepSize'])
 
 
-buy_cost = Decimal(buy_price) * Decimal(buy_quantity)
-buy_cost = decimal_rounding(buy_cost, filters['PRICE_FILTER_tickSize'], int_round=True)
-
-sell_price = Decimal(current_state['order_book_bid_current_price']) * Decimal(sell_profit_percent)
-sell_price = decimal_rounding(sell_price, filters['PRICE_FILTER_tickSize'], int_round=True)
-
-sell_cost = Decimal(sell_price) * Decimal(sell_quantity)
-sell_cost = decimal_rounding(sell_cost, filters['PRICE_FILTER_tickSize'], int_round=True)
-
-buy_order_to_db = {
-    "symbol": str("symbol"),
-    "price": str(buy_price),
-    "origQty": str(buy_quantity),
-    "cost": str(buy_cost),
-    "side": str('BUY'),
-    "workingTime": int(time.time() * 1000 // 1),
-}
-sell_order_to_db = {
-    "symbol": str("symbol"),
-    "price": str(sell_price),
-    "origQty": str(sell_quantity),
-    "cost": str(sell_cost),
-    "side": str('SELL'),
-    "workingTime": int(time.time() * 1000 // 1),
-}
-print(buy_order_to_db)
-print(sell_order_to_db)
-print(((Decimal(buy_order_to_db["origQty"]) - Decimal(sell_order_to_db["origQty"])) / Decimal(buy_order_to_db["origQty"])) > Decimal("0.001"))
-print((Decimal(buy_order_to_db["origQty"]) - Decimal(sell_order_to_db["origQty"])) / Decimal(buy_order_to_db["origQty"]))
-print((Decimal(buy_order_to_db["price"]) - Decimal(current_state['order_book_bid_current_price'])) / Decimal(buy_order_to_db["price"]))
-print((Decimal(sell_order_to_db["price"]) - Decimal(current_state['order_book_bid_current_price'])) / Decimal(buy_order_to_db["price"]))
-print((Decimal(buy_order_to_db["cost"]) - Decimal(sell_order_to_db["cost"])) / Decimal(buy_order_to_db["cost"]))
 # side_test_list = ["BUY", "SELL"]
 # side_test = side_test_list[randint(0, len(side_test_list) - 1)]
 # print(side_test)
