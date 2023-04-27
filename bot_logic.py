@@ -1,3 +1,4 @@
+# TODO: remove all deprecated code
 import os
 import sys
 import time
@@ -33,6 +34,11 @@ base_dir = f"{base_path}/"
 db_dir = f"{base_dir}databases/"
 
 
+# ===== General Methods ===================================================================== General Methods ======
+...
+# ===== General Methods ===================================================================== General Methods ======
+
+
 def delete_last_print_lines(n=1):
     # print("Entering to loop")
     # delete_last_print_lines()
@@ -51,12 +57,311 @@ def decimal_rounding(decimal_value, value_for_round="0.00000000", int_round=Fals
         return Decimal(decimal_value).quantize(Decimal(value_for_round), rounding=rounding)
 
 
+# ===== General API Methods ============================================================= General API Methods ======
+...
+# ===== General API Methods ============================================================= General API Methods ======
+
+
+def print_kline(kline):
+    output = f"[{kline['symbol']}] " \
+             f"Start: {kline['start_time_utc']:>20} | Close: {kline['close_time_utc']:>20}" \
+             f"\nALL : " \
+             f"Cost: {kline['all_cost']:>20} | " \
+             f"Qty: {kline['all_origQty']:>20}" \
+             f"\nBUY : " \
+             f"Cost: {kline['buy_cost']:>20} | " \
+             f"Qty: {kline['buy_origQty']:>20}" \
+             f"\nSELL: " \
+             f"Cost: {kline['sell_cost']:>20} | " \
+             f"Qty: {kline['sell_origQty']:>20}"
+
+    if kline['close_price'] >= kline["open_price"]:
+        output += f"\n-- UP ----" \
+                  f"\n-- {kline['high_price']} --:: {kline['close_price']} ::" \
+                  f":: {kline['open_price']} ::-- {kline['low_price']} --"
+    else:
+        output += f"\n-- DOWN --" \
+                  f"\n-- {kline['high_price']} --:: {kline['open_price']} ::" \
+                  f":: {kline['close_price']} ::-- {kline['low_price']} --"
+
+    try:
+        resp_type_pr = f'---- Kline ----------------------------------------- ' \
+                       f'{kline["time_utc"]:<20}' \
+                       f' ----'
+    except KeyError:
+        resp_type_pr = f'---- Kline ----------------------------------------- ' \
+                       f'{str(datetime.utcnow()):<20}' \
+                       f' ----'
+
+    return f'\n{Tags.LightBlue}{resp_type_pr}{Tags.ResetAll}\n{output}'
+
+
+def kline_sum(klines):
+    """
+    return {
+        "symbol"\n
+        "start_time",\n
+        "start_time_utc",\n
+        "close_time",\n
+        "close_time_utc",\n
+        "interval",\n
+        "open_price",\n
+        "close_price",\n
+        "high_price",\n
+        "low_price",\n
+        "number_of_trades",\n
+        "all_origQty",\n
+        "all_cost",\n
+        "buy_origQty",\n
+        "buy_cost",\n
+        "sell_origQty",\n
+        "sell_cost",\n
+        "amount"
+    }
+
+    :param klines:
+    :return: dict
+    """
+    sum_of_klines = {
+        "symbol": klines[0]["symbol"],
+        "start_time": klines[0]['start_time'],
+        "start_time_utc": klines[0]['start_time_utc'],
+        "close_time": klines[-1]['close_time'],
+        "close_time_utc": klines[-1]['close_time_utc'],
+        "interval": klines[0]['interval'],
+        "open_price": klines[0]['open_price'],
+        "close_price": klines[-1]['close_price'],
+        "high_price": klines[0]['high_price'],
+        "low_price": klines[0]['low_price'],
+        "number_of_trades": '0',
+        "all_origQty": '0',
+        "all_cost": '0',
+        "buy_origQty": '0',
+        "buy_cost": '0',
+        "sell_origQty": '0',
+        "sell_cost": '0',
+    }
+    for kline in klines:
+        if Decimal(kline['high_price']) > Decimal(sum_of_klines['high_price']):
+            sum_of_klines.update({"high_price": kline['high_price']})
+
+        if Decimal(kline['low_price']) < Decimal(sum_of_klines['low_price']):
+            sum_of_klines.update({"low_price": kline['low_price']})
+
+        sum_of_klines.update(
+            {
+                "number_of_trades": int(sum_of_klines['number_of_trades']) + int(kline['number_of_trades'])
+            }
+        )
+
+        sum_of_klines.update(
+            {
+                "all_origQty": (Decimal(str(sum_of_klines['all_origQty'])) +
+                                Decimal(str(kline['all_origQty']))).quantize(
+                    Decimal('0.00000000'),
+                    rounding=ROUND_HALF_UP
+                ),
+            }
+        )
+
+        sum_of_klines.update(
+            {
+                "all_cost": (Decimal(str(sum_of_klines['all_cost'])) +
+                             Decimal(str(kline['all_cost']))).quantize(
+                    Decimal('0.00000000'),
+                    rounding=ROUND_HALF_UP
+                ),
+            }
+        )
+
+        sum_of_klines.update(
+            {
+                "buy_origQty": (Decimal(str(sum_of_klines['buy_origQty'])) +
+                                Decimal(str(kline['buy_origQty']))).quantize(
+                    Decimal('0.00000000'),
+                    rounding=ROUND_HALF_UP
+                ),
+            }
+        )
+
+        sum_of_klines.update(
+            {
+                "buy_cost": (Decimal(str(sum_of_klines['buy_cost'])) +
+                             Decimal(str(kline['buy_cost']))).quantize(
+                    Decimal('0.00000000'),
+                    rounding=ROUND_HALF_UP
+                ),
+            }
+        )
+
+        sum_of_klines.update(
+            {
+                "sell_origQty": (Decimal(str(sum_of_klines['sell_origQty'])) +
+                                 Decimal(str(kline['sell_origQty']))).quantize(
+                    Decimal('0.00000000'),
+                    rounding=ROUND_HALF_UP
+                ),
+            }
+        )
+
+        sum_of_klines.update(
+            {
+                "sell_cost": (Decimal(str(sum_of_klines['sell_cost'])) +
+                              Decimal(str(kline['sell_cost']))).quantize(
+                    Decimal('0.00000000'),
+                    rounding=ROUND_HALF_UP
+                ),
+            }
+        )
+
+    sum_of_klines.update({'amount': len(klines)})
+    return sum_of_klines
+
+
+def kline_params(kline, sum_kline):
+    """
+    return {
+        "changing",\n
+        "direction",\n
+        "volume_part",\n
+    }
+    :param kline:
+    :param sum_kline:
+    :return:
+    """
+    kline_params = {}
+
+    with localcontext() as local_context:
+        # Setting precision of decimal calculations
+        local_context.prec = 8
+
+        # Changing
+        changing = (Decimal(kline["close_price"]) - Decimal(kline["open_price"])) / Decimal(kline["close_price"])
+        kline_params.update({"changing": changing})
+
+        # Direction
+        if changing < 0:
+            kline_params.update({"direction": 'DOWN'})
+            kline_params.update({"changing": -changing})
+        else:
+            kline_params.update({"direction": 'UP'})
+
+        # Volume part
+        volume_part = Decimal(kline["all_cost"]) * Decimal(sum_kline["amount"]) / Decimal(sum_kline["all_cost"])
+        kline_params.update({"volume_part": volume_part})
+
+    return kline_params
+
+
+def sort_orders_by_status(list_of_orders_dict, status_list=None):
+    if status_list is None:
+        status_list = ['NEW', 'PENDING']
+
+    sorted_orders_list = []
+    for order in list_of_orders_dict:
+        if str(order['status']) in status_list:
+            sorted_orders_list.append(order)
+    return sorted_orders_list
+
+
+def sort_orders_by_side(list_of_orders_dict, side_list=None):
+    if side_list is None:
+        side_list = ['SELL']
+
+    sorted_orders_list = []
+    for order in list_of_orders_dict:
+        if str(order['side']) in side_list:
+            sorted_orders_list.append(order)
+    return sorted_orders_list
+
+
+# ===== DB handle Methods ================================================================= DB handle Methods ======
+...
+# ===== DB handle Methods ================================================================= DB handle Methods ======
+
+
 def create_db_name(symbol, test_key=False):
     if test_key:
         db_name = f"test_{symbol}"
     else:
         db_name = f"{symbol}"
     return db_name
+
+
+def update_orders_db():
+    sqlh.cursor.execute(tables.drop_table__orders)
+    sqlh.cursor.execute(tables.create_table__orders)
+
+    orders_to_save = spot_client.get_orders_to_db()
+    if len(orders_to_save) > 0:
+        for order in orders_to_save:
+            sqlh.insert_from_dict('orders', order)
+
+
+def get_orders_in_process_from_db(symbol_sqlh=None):
+    if symbol_sqlh is None:
+        symbol_sqlh = sqlh
+
+    pending_orders_from_db = symbol_sqlh.select_from_table('pending_orders', tables.columns__pending_orders)
+    pending_orders_fetchall = pending_orders_from_db.fetchall()
+    pending_orders_from_db = symbol_sqlh.parse_db_data_to_dict(tables.columns__pending_orders, pending_orders_fetchall)
+
+    orders_from_db = symbol_sqlh.select_from_table('orders', tables.columns__orders)
+    orders_fetchall = orders_from_db.fetchall()
+    orders_from_db = symbol_sqlh.parse_db_data_to_dict(tables.columns__orders, orders_fetchall)
+
+    orders_in_process = sort_orders_by_status([*pending_orders_from_db, *orders_from_db])
+    orders_in_process_buy = sort_orders_by_side(orders_in_process, 'BUY')
+    orders_in_process_sell = sort_orders_by_side(orders_in_process, 'SELL')
+    orders_in_process_pending = sort_orders_by_status(orders_in_process, ['PENDING'])
+    orders_in_process_new = sort_orders_by_status(orders_from_db, ['NEW'])
+
+    orders_in_process_cost = 0
+    for order in orders_in_process_new:
+        orders_in_process_cost = orders_in_process_cost + float(order['cost'])
+
+    return {
+        'orders': orders_in_process,
+        'orders_new_cost': orders_in_process_cost,
+        'orders_buy': orders_in_process_buy,
+        'orders_sell': orders_in_process_sell,
+        'orders_pending': orders_in_process_pending,
+        'orders_new': orders_in_process_new,
+    }
+
+
+def list_of_orders_to_dataframe(orders, header: str = None, key_to_print=False, columns=None, sort_col='price',
+                                ascending=True, reset_index=True):
+    """
+
+    :param orders:
+    :param header:
+    :param key_to_print:
+    :param columns:
+    :param sort_col:
+    :param ascending: bool      | True -> min to max
+    :param reset_index:
+    :return:
+    """
+    if columns is None:
+        columns = ['symbol', 'orderId', 'price', 'origQty', 'cost', 'side', 'status']
+
+    if len(orders) > 0:
+        orders_df = pd.DataFrame(
+            orders,
+            columns=columns
+        )
+        orders_df = orders_df.sort_values([sort_col], ascending=ascending).reset_index(drop=reset_index)
+
+        if key_to_print:
+            print(f'\n{Tags.LightBlue}{header}{Tags.ResetAll}\n{orders_df}')
+
+        return orders_df
+
+
+# ===== Orders handle Methods ========================================================= Orders handle Methods ======
+...
+# ===== Orders handle Methods ========================================================= Orders handle Methods ======
 
 
 def create_buy_order():
@@ -160,99 +465,6 @@ def create_sell_order_from_dict(order):
         print('[ERROR] create_sell_order_from_dict > ', _ex)
 
 
-def update_orders_db():
-    sqlh.cursor.execute(tables.drop_table__orders)
-    sqlh.cursor.execute(tables.create_table__orders)
-
-    orders_to_save = spot_client.get_orders_to_db()
-    if len(orders_to_save) > 0:
-        for order in orders_to_save:
-            sqlh.insert_from_dict('orders', order)
-
-
-def sort_orders_by_status(list_of_orders_dict, status_list=None):
-    if status_list is None:
-        status_list = ['NEW', 'PENDING']
-
-    sorted_orders_list = []
-    for order in list_of_orders_dict:
-        if str(order['status']) in status_list:
-            sorted_orders_list.append(order)
-    return sorted_orders_list
-
-
-def sort_orders_by_side(list_of_orders_dict, side_list=None):
-    if side_list is None:
-        side_list = ['SELL']
-
-    sorted_orders_list = []
-    for order in list_of_orders_dict:
-        if str(order['side']) in side_list:
-            sorted_orders_list.append(order)
-    return sorted_orders_list
-
-
-def get_orders_in_process_from_db(symbol_sqlh=None):
-    if symbol_sqlh is None:
-        symbol_sqlh = sqlh
-
-    pending_orders_from_db = symbol_sqlh.select_from_table('pending_orders', tables.columns__pending_orders)
-    pending_orders_fetchall = pending_orders_from_db.fetchall()
-    pending_orders_from_db = symbol_sqlh.parse_db_data_to_dict(tables.columns__pending_orders, pending_orders_fetchall)
-
-    orders_from_db = symbol_sqlh.select_from_table('orders', tables.columns__orders)
-    orders_fetchall = orders_from_db.fetchall()
-    orders_from_db = symbol_sqlh.parse_db_data_to_dict(tables.columns__orders, orders_fetchall)
-
-    orders_in_process = sort_orders_by_status([*pending_orders_from_db, *orders_from_db])
-    orders_in_process_buy = sort_orders_by_side(orders_in_process, 'BUY')
-    orders_in_process_sell = sort_orders_by_side(orders_in_process, 'SELL')
-    orders_in_process_pending = sort_orders_by_status(orders_in_process, ['PENDING'])
-    orders_in_process_new = sort_orders_by_status(orders_from_db, ['NEW'])
-
-    orders_in_process_cost = 0
-    for order in orders_in_process_new:
-        orders_in_process_cost = orders_in_process_cost + float(order['cost'])
-
-    return {
-        'orders': orders_in_process,
-        'orders_new_cost': orders_in_process_cost,
-        'orders_buy': orders_in_process_buy,
-        'orders_sell': orders_in_process_sell,
-        'orders_pending': orders_in_process_pending,
-        'orders_new': orders_in_process_new,
-    }
-
-
-def list_of_orders_to_dataframe(orders, header: str = None, key_to_print=False, columns=None, sort_col='price',
-                                ascending=True, reset_index=True):
-    """
-
-    :param orders:
-    :param header:
-    :param key_to_print:
-    :param columns:
-    :param sort_col:
-    :param ascending: bool      | True -> min to max
-    :param reset_index:
-    :return:
-    """
-    if columns is None:
-        columns = ['symbol', 'orderId', 'price', 'origQty', 'cost', 'side', 'status']
-
-    if len(orders) > 0:
-        orders_df = pd.DataFrame(
-            orders,
-            columns=columns
-        )
-        orders_df = orders_df.sort_values([sort_col], ascending=ascending).reset_index(drop=reset_index)
-
-        if key_to_print:
-            print(f'\n{Tags.LightBlue}{header}{Tags.ResetAll}\n{orders_df}')
-
-        return orders_df
-
-
 def new_order_from_pending_db(pending_orders):
     sell_orders = sort_orders_by_side(pending_orders, side_list=["SELL"])
     buy_orders = sort_orders_by_side(pending_orders, side_list=["BUY"])
@@ -277,6 +489,11 @@ def new_order_from_pending_db(pending_orders):
     )
     if len(buy_orders) > 0:
         create_buy_order_from_dict(buy_orders[buy_orders_df['index'][0]])
+
+
+# ===== Trade process Methods ======================================================== Trade process Methods ======
+...
+# ===== Trade process Methods ======================================================== Trade process Methods ======
 
 
 def trade_process(custom_buy_div=None, custom_cost_limit=None):
@@ -570,6 +787,80 @@ def if_buy_kline():
         trade_process(custom_buy_div=0.8, custom_cost_limit=custom_cost_limit)
 
 
+def if_buy_order_book(symbol):
+
+    # Getting 1m klines
+    kline_1h = spot_client.get_kline(
+        symbol=symbol,
+        interval='1m',
+        limit=60,
+        output_key=False,
+        if_sum=True
+    )
+
+    # Checking if symbol is ready to trade process
+    checked_symbol = checking_symbol_history(symbol)
+
+
+        # # Symbol state // monitoring
+        # symbol_state = 0
+        # symbol_to_trade = None
+        # if 20 in checked_symbols.values():
+        #     for symbol in checked_symbols.keys():
+        #         if checked_symbols[symbol] == 20:
+        #             symbol_state = monitoring_symbol(kline_1h_list[symbol]["sum"], filters_list[symbol])
+        #             if (symbol_state > 70) or (symbol_state < -70):
+        #                 print(f"\n{Tags.BackgroundBlue}{Tags.Reverse}Symbol state: {symbol_state}{Tags.ResetAll}")
+        #                 symbol_to_trade = symbol
+        #             else:
+        #                 print(f"\n{Tags.BackgroundDarkGray}{Tags.Reverse}Symbol state: {symbol_state}{Tags.ResetAll}")
+        #             break
+        # 
+        # elif 10 in checked_symbols.values():
+        #     for symbol in checked_symbols.keys():
+        #         if checked_symbols[symbol] == 10:
+        #             symbol_state = monitoring_symbol(kline_1h_list[symbol]["sum"], filters_list[symbol])
+        #             if (symbol_state > 70) or (symbol_state < -70):
+        #                 print(f"\n{Tags.BackgroundBlue}{Tags.Reverse}Symbol state: {symbol_state}{Tags.ResetAll}")
+        #                 symbol_to_trade = symbol
+        #             else:
+        #                 print(f"\n{Tags.BackgroundDarkGray}{Tags.Reverse}Symbol state: {symbol_state}{Tags.ResetAll}")
+        #             break
+        # 
+        # elif 0 in checked_symbols.values():
+        #     for symbol in checked_symbols.keys():
+        #         if (checked_symbols[symbol] == 0) and (symbol not in symbols_to_skip):
+        #             symbol_state = monitoring_symbol(
+        #                 kline_1h_list[symbol]["sum"],
+        #                 filters_list[symbol],
+        #                 monitoring_time=16
+        #             )
+        #             if (symbol_state > 70) or (symbol_state < -70):
+        #                 print(f"\n{Tags.BackgroundBlue}{Tags.Reverse}Symbol state: {symbol_state}{Tags.ResetAll}")
+        #                 symbol_to_trade = symbol
+        #             else:
+        #                 print(f"\n{Tags.BackgroundDarkGray}{Tags.Reverse}Symbol state: {symbol_state}{Tags.ResetAll}")
+        #             if symbol_state != 0:
+        #                 break
+        # 
+        # # Trade process // symbol = [100, 80, 20, 0, -20, -80, -100]
+        # if symbol_state == 100:
+        #     symbol_if_buy_kline(symbol_to_trade, sqlh_dict[symbol_to_trade], side="BUY", profit=0.5)
+        # elif symbol_state == 80:
+        #     symbol_if_buy_kline(symbol_to_trade, sqlh_dict[symbol_to_trade], side="BUY", profit=0.4)
+        # elif symbol_state == -80:
+        #     # TODO: if_buy
+        #     pass
+        # elif symbol_state == -100:
+        #     # TODO: if_buy
+        #     pass
+        # elif test_key:
+        #     side_test_list = ["BUY", "SELL"]
+        #     side_test = side_test_list[randint(0, len(side_test_list) - 1)]
+        #     symbol_to_trade = symbols_list[randint(0, len(symbols_list) - 1)]
+        #     symbol_if_buy_kline(symbol_to_trade, sqlh_dict[symbol_to_trade], side=side_test, profit=0.4)
+
+
 def symbol_if_buy_kline(symbol, symbol_sqlh: SQLiteHandler, side, profit=0.3, pending_only=False):
     """
     :param symbol: str                  | "BTCUSDT"
@@ -619,197 +910,6 @@ def symbol_if_buy_kline(symbol, symbol_sqlh: SQLiteHandler, side, profit=0.3, pe
             symbol_trading_process(symbol, symbol_sqlh, custom_buy_div=0.95, custom_cost_limit=symbol_cost_limit, custom_profit_percent=profit)
 
 
-def kline_sum(klines):
-    """
-    return {
-        "symbol"\n
-        "start_time",\n
-        "start_time_utc",\n
-        "close_time",\n
-        "close_time_utc",\n
-        "interval",\n
-        "open_price",\n
-        "close_price",\n
-        "high_price",\n
-        "low_price",\n
-        "number_of_trades",\n
-        "all_origQty",\n
-        "all_cost",\n
-        "buy_origQty",\n
-        "buy_cost",\n
-        "sell_origQty",\n
-        "sell_cost",\n
-        "amount"
-    }
-
-    :param klines:
-    :return: dict
-    """
-    sum_of_klines = {
-        "symbol": klines[0]["symbol"],
-        "start_time": klines[0]['start_time'],
-        "start_time_utc": klines[0]['start_time_utc'],
-        "close_time": klines[-1]['close_time'],
-        "close_time_utc": klines[-1]['close_time_utc'],
-        "interval": klines[0]['interval'],
-        "open_price": klines[0]['open_price'],
-        "close_price": klines[-1]['close_price'],
-        "high_price": klines[0]['high_price'],
-        "low_price": klines[0]['low_price'],
-        "number_of_trades": '0',
-        "all_origQty": '0',
-        "all_cost": '0',
-        "buy_origQty": '0',
-        "buy_cost": '0',
-        "sell_origQty": '0',
-        "sell_cost": '0',
-    }
-    for kline in klines:
-        if Decimal(kline['high_price']) > Decimal(sum_of_klines['high_price']):
-            sum_of_klines.update({"high_price": kline['high_price']})
-
-        if Decimal(kline['low_price']) < Decimal(sum_of_klines['low_price']):
-            sum_of_klines.update({"low_price": kline['low_price']})
-
-        sum_of_klines.update(
-            {
-                "number_of_trades": int(sum_of_klines['number_of_trades']) + int(kline['number_of_trades'])
-            }
-        )
-
-        sum_of_klines.update(
-            {
-                "all_origQty": (Decimal(str(sum_of_klines['all_origQty'])) +
-                                Decimal(str(kline['all_origQty']))).quantize(
-                    Decimal('0.00000000'),
-                    rounding=ROUND_HALF_UP
-                ),
-            }
-        )
-
-        sum_of_klines.update(
-            {
-                "all_cost": (Decimal(str(sum_of_klines['all_cost'])) +
-                             Decimal(str(kline['all_cost']))).quantize(
-                    Decimal('0.00000000'),
-                    rounding=ROUND_HALF_UP
-                ),
-            }
-        )
-
-        sum_of_klines.update(
-            {
-                "buy_origQty": (Decimal(str(sum_of_klines['buy_origQty'])) +
-                                Decimal(str(kline['buy_origQty']))).quantize(
-                    Decimal('0.00000000'),
-                    rounding=ROUND_HALF_UP
-                ),
-            }
-        )
-
-        sum_of_klines.update(
-            {
-                "buy_cost": (Decimal(str(sum_of_klines['buy_cost'])) +
-                             Decimal(str(kline['buy_cost']))).quantize(
-                    Decimal('0.00000000'),
-                    rounding=ROUND_HALF_UP
-                ),
-            }
-        )
-
-        sum_of_klines.update(
-            {
-                "sell_origQty": (Decimal(str(sum_of_klines['sell_origQty'])) +
-                                 Decimal(str(kline['sell_origQty']))).quantize(
-                    Decimal('0.00000000'),
-                    rounding=ROUND_HALF_UP
-                ),
-            }
-        )
-
-        sum_of_klines.update(
-            {
-                "sell_cost": (Decimal(str(sum_of_klines['sell_cost'])) +
-                              Decimal(str(kline['sell_cost']))).quantize(
-                    Decimal('0.00000000'),
-                    rounding=ROUND_HALF_UP
-                ),
-            }
-        )
-
-    sum_of_klines.update({'amount': len(klines)})
-    return sum_of_klines
-
-
-def kline_params(kline, sum_kline):
-    """
-    return {
-        "changing",\n
-        "direction",\n
-        "volume_part",\n
-    }
-    :param kline: 
-    :param sum_kline: 
-    :return: 
-    """
-    kline_params = {}
-
-    with localcontext() as local_context:
-        # Setting precision of decimal calculations
-        local_context.prec = 8
-
-        # Changing
-        changing = (Decimal(kline["close_price"]) - Decimal(kline["open_price"])) / Decimal(kline["close_price"])
-        kline_params.update({"changing": changing})
-
-        # Direction
-        if changing < 0:
-            kline_params.update({"direction": 'DOWN'})
-            kline_params.update({"changing": -changing})
-        else:
-            kline_params.update({"direction": 'UP'})
-
-        # Volume part
-        volume_part = Decimal(kline["all_cost"]) * Decimal(sum_kline["amount"]) / Decimal(sum_kline["all_cost"])
-        kline_params.update({"volume_part": volume_part})
-
-    return kline_params
-
-
-def print_kline(kline):
-    output = f"[{kline['symbol']}] " \
-             f"Start: {kline['start_time_utc']:>20} | Close: {kline['close_time_utc']:>20}" \
-             f"\nALL : " \
-             f"Cost: {kline['all_cost']:>20} | " \
-             f"Qty: {kline['all_origQty']:>20}" \
-             f"\nBUY : " \
-             f"Cost: {kline['buy_cost']:>20} | " \
-             f"Qty: {kline['buy_origQty']:>20}" \
-             f"\nSELL: " \
-             f"Cost: {kline['sell_cost']:>20} | " \
-             f"Qty: {kline['sell_origQty']:>20}"
-
-    if kline['close_price'] >= kline["open_price"]:
-        output += f"\n-- UP ----" \
-                  f"\n-- {kline['high_price']} --:: {kline['close_price']} ::" \
-                  f":: {kline['open_price']} ::-- {kline['low_price']} --"
-    else:
-        output += f"\n-- DOWN --" \
-                  f"\n-- {kline['high_price']} --:: {kline['open_price']} ::" \
-                  f":: {kline['close_price']} ::-- {kline['low_price']} --"
-
-    try:
-        resp_type_pr = f'---- Kline ----------------------------------------- ' \
-                       f'{kline["time_utc"]:<20}' \
-                       f' ----'
-    except KeyError:
-        resp_type_pr = f'---- Kline ----------------------------------------- ' \
-                       f'{str(datetime.utcnow()):<20}' \
-                       f' ----'
-
-    return f'\n{Tags.LightBlue}{resp_type_pr}{Tags.ResetAll}\n{output}'
-
-
 def checking_symbol_for_monitoring(klines, stdout=True):
     """
 
@@ -821,9 +921,6 @@ def checking_symbol_for_monitoring(klines, stdout=True):
                     2 - growing and has space for growing
                     -<int> - not growing but has space for growing
     """
-    # TODO: knives are bad
-    #
-    # TODO: monitoring > order book > volume ?? > big bids > price to sell ??
     ...
 
     # Calculating kline's params
@@ -1055,6 +1152,13 @@ def monitoring_symbol(sum_kline, filters, monitoring_time=30):
 
 
 def checking_symbol_history(symbol):
+    """
+        returns score of
+
+    :param symbol:
+    :return:
+    """
+
     klines = web_socket.kline_history[symbol]
     sum_kline = kline_sum(klines)
 
@@ -1455,138 +1559,38 @@ def id_arg_7(test_key=False):
     spot_client.filters_list = filters_list
     delete_last_print_lines()
 
+    # TODO: monitoring > order book > volume ?? > big bids > price to sell ??
+    #       big bid < sum(bid[n:n+2]) >= 3 * average_cost(bid[0:20]) ?
+    ...
 
-    print("\nsleeping 15 secs")
+    # Checking symbol order book and create orders
+    print(f"\n{Tags.LightYellow}Checking symbol order book and create orders{Tags.ResetAll}")
+    print("Amount of symbols:", len(symbols_to_trade))
+    print("Entering to loop")
+    for symbol, list_index in zip(symbols_to_trade, range(len(symbols_to_trade))):
+        delete_last_print_lines()
+        if_buy_order_book(symbol)
+        print(f"{list_index}/{len(symbols_to_trade)}")
+        sleep(0.1)
+    delete_last_print_lines()
+
+
+    print("\nSleeping 15 secs (for tests reasons)")
     sleep(15)
 
-    # Creating streams _kline_history
-    print(f"\n{Tags.LightYellow}Creating streams _kline_history{Tags.ResetAll}")
-    print("Amount of symbols:", len(symbols_to_trade))
-    # print("Entering to loop")
-    # delete_last_print_lines()
-    # print(f"{list_index}/{len(symbols_list)}")
+    # Checking pending orders for all symbols
     for symbol in symbols_list:
-        try:
-            stream_id = randint(1, 99999)
-            print(f"Stream: {symbol}; ID: {stream_id}")
-            web_socket.kline_output_key = False
-            web_socket.stream_kline_history(symbol=symbol, stream_id=stream_id)
-            sleep(0.3)
-        except ClientError as _ex:
-            print(f"\n{Tags.LightYellow}[WARNING] Creating streams > {_ex.error_message} > "
-                  f"{symbol} is removed from the symbol_list{Tags.ResetAll}")
-            symbols_list_to_delete.append(symbol)
-    symbols_list = [item for item in symbols_list if item not in symbols_list_to_delete]
+        symbol_if_buy_kline(symbol, sqlh_dict[symbol], side="PENDING", pending_only=True)
 
-    # Getting 1m klines
-    print("Amount of symbols:", len(symbols_list))
-    # print("Entering to loop")
-    # delete_last_print_lines()
-    # print(f"{list_index}/{len(symbols_list)}")
-    sleep(3)
-    print(f"\n{Tags.LightYellow}Getting 1h klines{Tags.ResetAll}")
-    kline_1h_list = {}
-    for symbol in symbols_list:
-        try:
-            kline_1h = spot_client.get_kline(
-                symbol=symbol,
-                interval='1m',
-                limit=60,
-                output_key=True,
-                if_sum=True
-            )
-            kline_1h_list.update({symbol: kline_1h})
-            web_socket.kline_history[symbol] = kline_1h['klines']
-            sleep(0.3)
-        except ClientError as _ex:
-            print(f"\n{Tags.LightYellow}[WARNING] Getting 24h klines > {_ex.error_message} > "
-                  f"{symbol} is removed from the symbol_list{Tags.ResetAll}")
-            symbols_list_to_delete.append(symbol)
-    symbols_list = [item for item in symbols_list if item not in symbols_list_to_delete]
+    # TODO: if there is pending pair > check how long > cancel pair ???
 
-    # The base mode logic
-    sleep(3)
-    # The cycle is for the base logic repeating every {loop_waiting} time
-    print(f"\n{Tags.LightYellow}Starting the base mode logic{Tags.ResetAll}")
-    symbols_to_skip = []
-    while True:
-
-        # Checking if symbol is ready to trade process
-        checked_symbols = {}
-        for symbol in symbols_list:
-            checked_symbols.update({symbol: checking_symbol_history(symbol)})
-
-        # # Symbol state // monitoring
-        # symbol_state = 0
-        # symbol_to_trade = None
-        # if 20 in checked_symbols.values():
-        #     for symbol in checked_symbols.keys():
-        #         if checked_symbols[symbol] == 20:
-        #             symbol_state = monitoring_symbol(kline_1h_list[symbol]["sum"], filters_list[symbol])
-        #             if (symbol_state > 70) or (symbol_state < -70):
-        #                 print(f"\n{Tags.BackgroundBlue}{Tags.Reverse}Symbol state: {symbol_state}{Tags.ResetAll}")
-        #                 symbol_to_trade = symbol
-        #             else:
-        #                 print(f"\n{Tags.BackgroundDarkGray}{Tags.Reverse}Symbol state: {symbol_state}{Tags.ResetAll}")
-        #             break
-        #
-        # elif 10 in checked_symbols.values():
-        #     for symbol in checked_symbols.keys():
-        #         if checked_symbols[symbol] == 10:
-        #             symbol_state = monitoring_symbol(kline_1h_list[symbol]["sum"], filters_list[symbol])
-        #             if (symbol_state > 70) or (symbol_state < -70):
-        #                 print(f"\n{Tags.BackgroundBlue}{Tags.Reverse}Symbol state: {symbol_state}{Tags.ResetAll}")
-        #                 symbol_to_trade = symbol
-        #             else:
-        #                 print(f"\n{Tags.BackgroundDarkGray}{Tags.Reverse}Symbol state: {symbol_state}{Tags.ResetAll}")
-        #             break
-        #
-        # elif 0 in checked_symbols.values():
-        #     for symbol in checked_symbols.keys():
-        #         if (checked_symbols[symbol] == 0) and (symbol not in symbols_to_skip):
-        #             symbol_state = monitoring_symbol(
-        #                 kline_1h_list[symbol]["sum"],
-        #                 filters_list[symbol],
-        #                 monitoring_time=16
-        #             )
-        #             if (symbol_state > 70) or (symbol_state < -70):
-        #                 print(f"\n{Tags.BackgroundBlue}{Tags.Reverse}Symbol state: {symbol_state}{Tags.ResetAll}")
-        #                 symbol_to_trade = symbol
-        #             else:
-        #                 print(f"\n{Tags.BackgroundDarkGray}{Tags.Reverse}Symbol state: {symbol_state}{Tags.ResetAll}")
-        #             if symbol_state != 0:
-        #                 break
-        #
-        # # Trade process // symbol = [100, 80, 20, 0, -20, -80, -100]
-        # if symbol_state == 100:
-        #     symbol_if_buy_kline(symbol_to_trade, sqlh_dict[symbol_to_trade], side="BUY", profit=0.5)
-        # elif symbol_state == 80:
-        #     symbol_if_buy_kline(symbol_to_trade, sqlh_dict[symbol_to_trade], side="BUY", profit=0.4)
-        # elif symbol_state == -80:
-        #     # TODO: if_buy
-        #     pass
-        # elif symbol_state == -100:
-        #     # TODO: if_buy
-        #     pass
-        # elif test_key:
-        #     side_test_list = ["BUY", "SELL"]
-        #     side_test = side_test_list[randint(0, len(side_test_list) - 1)]
-        #     symbol_to_trade = symbols_list[randint(0, len(symbols_list) - 1)]
-        #     symbol_if_buy_kline(symbol_to_trade, sqlh_dict[symbol_to_trade], side=side_test, profit=0.4)
-
-        # Checking pending orders for all symbols
-        for symbol in symbols_list:
-            symbol_if_buy_kline(symbol, sqlh_dict[symbol], side="PENDING", pending_only=True)
-
-        # TODO: if there is pending pair > check how long > cancel pair ???
-
-        # Printing header before sleeping
-        resp_type_pr = f'---- UTC time -------------------------------------- ' \
-                       f'{str(datetime.utcfromtimestamp(int(time.time()))):<20}' \
-                       f' ----'
-        print(f'\n{Tags.LightBlue}{resp_type_pr}{Tags.ResetAll}')
-        print(f'Waiting {loop_waiting} sec')
-        sleep(loop_waiting)
+    # Printing header before sleeping
+    resp_type_pr = f'---- UTC time -------------------------------------- ' \
+                   f'{str(datetime.utcfromtimestamp(int(time.time()))):<20}' \
+                   f' ----'
+    print(f'\n{Tags.LightBlue}{resp_type_pr}{Tags.ResetAll}')
+    print(f'Waiting {loop_waiting} sec')
+    sleep(loop_waiting)
 
     # END // movement anchor
 
